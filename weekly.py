@@ -20,10 +20,16 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 
-from alpha.odds import MODEL_FEATURES, _clean, _label, fit_predict_one
-from alpha.panel import build_panel
-from alpha.scan import compute_features
-from alpha.track import compute_track
+try:  # local layout: alpha/ package inside the PRISM working tree
+    from alpha.odds import MODEL_FEATURES, _clean, _label, fit_predict_one
+    from alpha.panel import build_panel
+    from alpha.scan import compute_features
+    from alpha.track import compute_track
+except ImportError:  # standalone layout: modules at repo root (Streamlit Cloud)
+    from odds import MODEL_FEATURES, _clean, _label, fit_predict_one
+    from panel import build_panel
+    from scan import compute_features
+    from track import compute_track
 
 ARCHIVE = os.path.join("alpha", "Alpha Resources", "Weekly", "Stocks_Backups Weekly")
 LOG = os.path.join("alpha", "waves_log.csv")
