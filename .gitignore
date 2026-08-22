@@ -1,0 +1,4 @@
+# Data archive (231MB market snapshots) and derived caches — never code, never pushed.
+Alpha Resources/
+*.parquet
+__pycache__/
