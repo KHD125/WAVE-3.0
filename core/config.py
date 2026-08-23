@@ -21,6 +21,11 @@ DRIVE_FOLDER_WEEKLY = "https://drive.google.com/drive/folders/1r9Y2E3_fOCLiBTBFF
 # Daily archive — execution testing only, NEVER training (ledger #56: half the market
 # span, 96% label overlap).
 DRIVE_FOLDER_DAILY = "https://drive.google.com/drive/folders/1B_TQWQW3Y-Y4jlVB3svdmMqsoPB_xd5S"
+# Monthly archive — recorded for completeness, currently UNUSED. Its one genuine
+# virtue is that monthly snapshots give near-NON-OVERLAPPING 4-week labels (weekly
+# labels overlap 75%, daily 96%), which would make its t-stats honest without a
+# haircut. But 11 files is 11 observations. Revisit at ~40 (≈2029).
+DRIVE_FOLDER_MONTHLY = "https://drive.google.com/drive/folders/16R8jvFwf5GS1NOxVIwvjVkjuPN175E6t"
 
 # ── Units ─────────────────────────────────────────────────────────────────────
 CRORE = 1e7                          # ₹1 crore in rupees

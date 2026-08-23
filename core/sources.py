@@ -16,6 +16,7 @@ import glob
 import io
 import os
 import re
+import time
 from typing import List, Optional, Tuple
 
 import logging
@@ -26,6 +27,13 @@ from .panel import (add_forward_returns, apply_universe_screen,
                     parse_date_from_filename, _normalize_snapshot)
 
 logger = logging.getLogger(__name__)
+
+# Drive throttles bursts of ~50 downloads and returns an HTML notice instead of the
+# file. Measured transient (a repeat run fetched all 50 cleanly), so pace and retry
+# rather than failing the weekly job on a blip.
+RETRY_ATTEMPTS = 3
+PACE_SECONDS = 0.15
+BACKOFF_SECONDS = 1.5
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOCAL_ARCHIVE = os.path.join(_ROOT, "Alpha Resources", "Weekly", "Stocks_Backups Weekly")
@@ -110,7 +118,12 @@ def load_csvs_from_drive(folder_key: str) -> Tuple[List[FileBytes], Optional[str
         seen.add(fid)
         url = f"https://drive.google.com/uc?export=download&id={fid}"
         last_error = None
-        for attempt in range(2):          # one retry: Drive drops connections
+        # Drive throttles ~50 rapid downloads and answers with an HTML notice, not
+        # a CSV. Verified transient: an identical second run fetched all 50 cleanly.
+        # So pace the requests and back off — a Sunday job that fails on a blip
+        # leaves a hole in the log, which is worse than the blip.
+        time.sleep(PACE_SECONDS)
+        for attempt in range(RETRY_ATTEMPTS):
             try:
                 dl = session.get(url, timeout=60)
                 content = dl.content
@@ -121,8 +134,12 @@ def load_csvs_from_drive(folder_key: str) -> Tuple[List[FileBytes], Optional[str
                                               timeout=90).content
                 head = content[:500].decode("utf-8", errors="ignore").lower()
                 if "<html" in head and "ticker" not in head:
-                    last_error = "received HTML, not CSV (file may not be shared)"
-                    break                 # a sharing problem will not fix itself
+                    # Ambiguous: an unshared file AND a throttle notice both look
+                    # like HTML. RAISE rather than `continue` — continue would skip
+                    # the backoff at the loop foot, retrying instantly against the
+                    # very throttle that needs time to clear. A throttle clears; a
+                    # sharing problem does not, and the final error names the file.
+                    raise ValueError("received HTML, not CSV (throttled, or not shared)")
                 cd = dl.headers.get("Content-Disposition", "")
                 m = re.search(r'filename="?([^";\n]+)"?', cd)
                 real = m.group(1).strip() if m else fname
@@ -131,7 +148,10 @@ def load_csvs_from_drive(folder_key: str) -> Tuple[List[FileBytes], Optional[str
                 last_error = None
                 break
             except Exception as exc:
-                last_error = f"{type(exc).__name__}: {exc}"
+                last_error = (str(exc) if isinstance(exc, ValueError)
+                              else f"{type(exc).__name__}: {exc}")
+            if attempt < RETRY_ATTEMPTS - 1:
+                time.sleep(BACKOFF_SECONDS * (attempt + 1))
         if last_error:
             failed.append((fname, last_error))
 
