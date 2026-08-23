@@ -178,10 +178,10 @@ being shut Sat/Sun), % of prices identical within 0.5%:
 | next Tuesday | 23% |
 
 So `Stocks_Daily_2026-03-09` (a Monday) contains the close of Friday 2026-03-06:
-its sheet was last refreshed Sunday 23:15 IST, and a Sunday refresh returns Friday's
-close because the market was shut. The Sunday weekly file matches for the same reason
-(last refreshed Saturday 23:15 IST -> also Friday's close), which is exactly why the
-two are 100% identical.
+the Puller SKIPS WEEKENDS (`calculateNextTriggerTime` advances Sat/Sun to Monday), so
+the sheet's last refresh before that backup was **Friday 23:15 IST**. The Sunday weekly
+file carries the same Friday close for the same reason, which is exactly why the two are
+100% identical.
 
 **Do NOT "fix" the schedule.** Making a file dated D hold day D's close would need the
 backup to run inside the 45-minute window between 23:15 IST and midnight - fragile, and
