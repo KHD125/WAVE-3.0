@@ -18,10 +18,14 @@ import os
 import re
 from typing import List, Optional, Tuple
 
+import logging
+
 import pandas as pd
 
 from .panel import (add_forward_returns, apply_universe_screen,
                     parse_date_from_filename, _normalize_snapshot)
+
+logger = logging.getLogger(__name__)
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOCAL_ARCHIVE = os.path.join(_ROOT, "Alpha Resources", "Weekly", "Stocks_Backups Weekly")
@@ -38,15 +42,30 @@ def local_archive_files() -> List[FileBytes]:
 def build_panel_from_files(files: List[FileBytes],
                            horizons_weeks: Tuple[int, ...] = (4,)) -> pd.DataFrame:
     """(filename, bytes) -> the stage-0 panel. Same laws as panel.build_panel."""
-    frames = []
+    frames, skipped = [], []
     for name, data in files:
         date = parse_date_from_filename(name)
         if date is None:
+            skipped.append((name, "no date in filename"))
             continue
-        raw = pd.read_csv(io.BytesIO(data), encoding="utf-8", low_memory=False)
-        frames.append(_normalize_snapshot(raw, date))
+        try:
+            raw = pd.read_csv(io.BytesIO(data), encoding="utf-8", low_memory=False)
+            if "ticker" not in raw.columns:
+                # A live #REF!/#N/A in the sheet gets frozen into the backup and
+                # renames the key column (seen: Stocks_Daily_2026-04-22, header
+                # '#REF!'). One corrupt snapshot must not kill the run — but it
+                # must be REPORTED. A silently dropped week is a hole in the
+                # evidence that nothing downstream can see.
+                raise ValueError(f"no 'ticker' column (found {list(raw.columns)[:3]})")
+            frames.append(_normalize_snapshot(raw, date))
+        except Exception as exc:
+            skipped.append((name, f"{type(exc).__name__}: {exc}"))
+    if skipped:
+        logger.warning("SKIPPED %d unreadable snapshot(s):", len(skipped))
+        for name, why in skipped:
+            logger.warning("   %s  ->  %s", name, why)
     if not frames:
-        raise ValueError("No dated Stocks_Weekly_*.csv files found.")
+        raise ValueError("No usable dated snapshots found.")
     panel = pd.concat(frames, ignore_index=True, sort=False)
     panel = panel.sort_values(["ticker", "date"], kind="mergesort").reset_index(drop=True)
     panel, _report = add_forward_returns(panel, horizons_weeks=horizons_weeks)

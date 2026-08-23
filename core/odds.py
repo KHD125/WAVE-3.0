@@ -86,7 +86,14 @@ def walk_forward(panel: pd.DataFrame) -> pd.DataFrame:
     outs = []
     for t in dates:
         tr = d[training_mask(d["date"], t)].dropna(subset=["y_up"])
-        if tr["date"].nunique() < MIN_TRAIN_WEEKS:
+        # Calendar span, NOT snapshot count. `nunique()` counts SNAPSHOTS, so on a
+        # daily archive 26 of them is 26 trading days (~5 weeks) — the guard would
+        # silently weaken 5x and let the model forecast on a fifth of the required
+        # history. The requirement is 26 WEEKS of market, whatever the sampling rate.
+        if tr.empty:
+            continue
+        span_weeks = (tr["date"].max() - tr["date"].min()).days / 7.0
+        if span_weeks < MIN_TRAIN_WEEKS:
             continue
         outs.append(fit_predict_one(tr, d[d["date"] == t]))
     if not outs:
