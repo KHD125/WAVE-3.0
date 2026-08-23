@@ -10,7 +10,7 @@
 # Reproducibility over freshness, until the February review.
 #
 # Versions below are exactly those the 50-test suite passes on (2026-08-23).
-streamlit~=1.54.0
+streamlit~=1.56.0
 pandas~=3.0.0
 numpy~=2.4.0
 scipy~=1.17.0
