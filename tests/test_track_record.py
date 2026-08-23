@@ -161,3 +161,32 @@ def test_append_log_cannot_touch_production_when_patched(tmp_path, monkeypatch):
     assert (tmp_path / "sandbox.csv").exists(), "the patched path must receive the write"
     after = os.path.getsize(real) if os.path.exists(real) else None
     assert after == before, "production log was modified by a test"
+
+
+def test_ci_entry_point_only_prints_columns_the_engine_produces():
+    """weekly_run.py hardcoded v3.0's p_up/p_dn/net_edge after the v3.1 switch and
+    would have crashed the first Sunday job with a KeyError. Static check: every
+    column it names must exist in what core.decide actually returns."""
+    import ast
+    import core.decide as decide
+    from core.config import RANK_FEATURE
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(root, "tools", "weekly_run.py"), encoding="utf-8").read()
+    literals = {n.value for n in ast.walk(ast.parse(src))
+                if isinstance(n, ast.Constant) and isinstance(n.value, str)}
+
+    produced = set(decide.LOG_COLUMNS) | {
+        RANK_FEATURE, "hist_rate", "hist_n", "hist_lift", "hist_base", "decile",
+        "ticker", "sector", "price", "persist", "sector_heat", "company_name",
+        "category", "from_high",
+    }
+    # Column-shaped strings only: lowercase, no spaces, and actually referenced.
+    suspects = {s for s in literals
+                if s.islower() and " " not in s and "_" in s and len(s) < 24
+                and not s.startswith(("http", "core.", "tools.", "logs/"))}
+    retired = {"p_up", "p_dn", "net_edge", "master_score"}
+    leaked = suspects & retired
+    assert not leaked, (
+        f"weekly_run.py references retired v3.0 columns {sorted(leaked)}. "
+        "The CI job would KeyError on the next real run.")

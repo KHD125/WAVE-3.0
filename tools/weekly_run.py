@@ -21,7 +21,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.decide import append_log, build_forecast_from_files          # noqa: E402
-from core.config import DRIVE_FOLDER_WEEKLY                            # noqa: E402
+from core.config import DRIVE_FOLDER_WEEKLY, MODEL_VERSION, RANK_FEATURE   # noqa: E402
 from core.sources import load_csvs_from_drive, local_archive_files     # noqa: E402
 
 
@@ -43,18 +43,25 @@ def collect_files():
     files = local_archive_files()
     if not files:
         raise RuntimeError(
-            "No data. Set WAVE_DRIVE_FOLDER (repo variable) or provide a local archive.")
+            "No data: the Drive folder returned nothing and no local archive exists.")
     print(f"loaded {len(files)} CSVs from the local archive")
     return files
 
 
 def main() -> int:
     table, meta = build_forecast_from_files(collect_files())
-    print(f"\nWAVE 3.0 · snapshot {meta['latest']:%Y-%m-%d} · trained through "
+    print(f"\nWAVE {MODEL_VERSION} · snapshot {meta['latest']:%Y-%m-%d} · trained through "
           f"{meta['trained_through']:%Y-%m-%d} · {meta['weeks']} weeks · {len(table)} names\n")
-    view = table[["ticker", "sector", "price", "p_up", "p_dn", "net_edge", "persist"]].copy()
-    for c in ("p_up", "p_dn", "net_edge"):
-        view[c] = (view[c] * 100).round(1)
+    # Columns come from LOG_COLUMNS-adjacent v3.1 fields. Never hardcode a column
+    # list that core/decide.py also defines: this printed v3.0's p_up/p_dn/net_edge
+    # after the v3.1 switch and would have crashed the first Sunday job.
+    cols = [c for c in ("ticker", "sector", "price", RANK_FEATURE, "decile",
+                        "hist_rate", "persist", "sector_heat") if c in table.columns]
+    view = table[cols].copy()
+    if RANK_FEATURE in view:
+        view[RANK_FEATURE] = (view[RANK_FEATURE] * 100).round(0)
+    if "hist_rate" in view:
+        view["hist_rate"] = (view["hist_rate"] * 100).round(1)
     print(view.to_string(index=False))
     if append_log(table):
         print(f"\nfrozen to logs/waves_log.csv — {len(table)} rows appended")
