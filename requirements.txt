@@ -1,6 +1,18 @@
-streamlit>=1.36
-pandas>=2.2
-numpy>=1.26
-scipy>=1.13
-scikit-learn>=1.4
-requests>=2.31
+# WAVE 3.0 — RUNTIME only. Keep this lean: Streamlit Cloud installs it on every
+# cold start, and a test framework or plotting library it never imports is pure
+# startup cost.
+#
+# PINNED WITH ~= (patch updates allowed, minor/major NOT) on purpose.
+# This system's product is a 26-week frozen-forecast experiment. If pandas
+# changes a groupby default or scikit-learn alters a solver in month 3, the
+# probabilities shift and the log stops being comparable to its own earlier
+# rows — the experiment silently invalidates itself with no code change from us.
+# Reproducibility over freshness, until the February review.
+#
+# Versions below are exactly those the 50-test suite passes on (2026-08-23).
+streamlit~=1.54.0
+pandas~=3.0.0
+numpy~=2.4.0
+scipy~=1.17.0
+scikit-learn~=1.8.0
+requests~=2.32.0

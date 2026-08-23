@@ -103,30 +103,50 @@ def load_csvs_from_drive(folder_key: str) -> Tuple[List[FileBytes], Optional[str
         names = re.findall(r'(Stocks_Weekly[^"<>\s]*\.csv)', resp.text, re.IGNORECASE)
         entries = list(zip(ids, names)) if names else [(i, f"file_{i}.csv") for i in ids]
 
-    seen, files = set(), []
+    seen, files, failed = set(), [], []
     for fid, fname in entries:
         if fid in seen:
             continue
         seen.add(fid)
         url = f"https://drive.google.com/uc?export=download&id={fid}"
-        try:
-            dl = session.get(url, timeout=60)
-            content = dl.content
-            if b"<html" in content[:200].lower() and b"confirm=" in content:
-                m = re.search(r"confirm=([0-9A-Za-z_-]+)", dl.text)
-                if m:
-                    content = session.get(f"{url}&confirm={m.group(1)}", timeout=90).content
-            head = content[:500].decode("utf-8", errors="ignore").lower()
-            if "<html" in head and "ticker" not in head:
-                continue
-            cd = dl.headers.get("Content-Disposition", "")
-            m = re.search(r'filename="?([^";\n]+)"?', cd)
-            real = m.group(1).strip() if m else fname
-            if real.lower().endswith(".csv"):
-                files.append((real, content))
-        except Exception:
-            continue
+        last_error = None
+        for attempt in range(2):          # one retry: Drive drops connections
+            try:
+                dl = session.get(url, timeout=60)
+                content = dl.content
+                if b"<html" in content[:200].lower() and b"confirm=" in content:
+                    m = re.search(r"confirm=([0-9A-Za-z_-]+)", dl.text)
+                    if m:
+                        content = session.get(f"{url}&confirm={m.group(1)}",
+                                              timeout=90).content
+                head = content[:500].decode("utf-8", errors="ignore").lower()
+                if "<html" in head and "ticker" not in head:
+                    last_error = "received HTML, not CSV (file may not be shared)"
+                    break                 # a sharing problem will not fix itself
+                cd = dl.headers.get("Content-Disposition", "")
+                m = re.search(r'filename="?([^";\n]+)"?', cd)
+                real = m.group(1).strip() if m else fname
+                if real.lower().endswith(".csv"):
+                    files.append((real, content))
+                last_error = None
+                break
+            except Exception as exc:
+                last_error = f"{type(exc).__name__}: {exc}"
+        if last_error:
+            failed.append((fname, last_error))
+
     if not files:
         return [], ("No CSVs downloaded. Check: folder sharing = 'Anyone with the link → "
                     "Viewer', and the folder holds Stocks_Weekly_*.csv files.")
+    if failed:
+        # PARTIAL downloads must NOT pass silently. For the app a missing week is
+        # an annoyance; for a forecast about to be frozen into the permanent log
+        # it is corruption — the odds would be computed on incomplete history and
+        # nothing downstream could ever tell. Callers decide: app.py warns and
+        # continues, tools/weekly_run.py treats any error as fatal.
+        detail = "; ".join(f"{n} ({why})" for n, why in failed[:5])
+        logger.warning("Drive: %d of %d files failed to download", len(failed),
+                       len(files) + len(failed))
+        return files, (f"Downloaded {len(files)} files but {len(failed)} FAILED: {detail}"
+                       + (" …" if len(failed) > 5 else ""))
     return files, None

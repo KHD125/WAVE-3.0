@@ -1,5 +1,5 @@
-# Dev/test only. requirements.txt stays RUNTIME-ONLY so Streamlit Cloud's cold
-# start doesn't install a test framework it will never run.
+# Dev/test only — never installed by Streamlit Cloud.
 -r requirements.txt
-pytest>=8.0
-pyarrow>=15.0        # parquet caches (tools/ and the Lab)
+pytest~=8.0
+pyarrow~=23.0        # parquet caches used by tools/ and ad-hoc analysis
+watchdog~=6.0        # faster `streamlit run` auto-reload while developing
