@@ -27,11 +27,9 @@ import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
-WAVE_PCT = 15.0                # +15% in 4 weeks = a wave (PLAN §5)
-CRASH_PCT = -15.0
-LABEL_COL = "fwd_ret_4w"
-EMBARGO_DAYS = 29              # label horizon + 1 day; Law: no label overlap, ever
-MIN_TRAIN_WEEKS = 26
+from .config import CRASH_PCT, EMBARGO_DAYS, LABEL_HORIZON_WEEKS, MIN_TRAIN_WEEKS, WAVE_PCT
+
+LABEL_COL = f"fwd_ret_{LABEL_HORIZON_WEEKS}w"
 
 MODEL_FEATURES = [
     "p_range_pos", "p_from_high", "p_ret_7d", "p_ret_30d", "p_ret_6m",
@@ -122,11 +120,13 @@ def calibration_table(oos: pd.DataFrame, prob_col: str = "p_up",
     return g
 
 
-if __name__ == "__main__":
-    from alpha.scan import compute_features
-    from alpha.track import compute_track
+if __name__ == "__main__":   # run as:  python -m alpha.core.odds  (locally)
+    import os
+    from .scan import compute_features
+    from .track import compute_track
 
-    panel = compute_track(compute_features(pd.read_parquet("alpha/_panel_long.parquet")))
+    _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    panel = compute_track(compute_features(pd.read_parquet(os.path.join(_root, "_panel_long.parquet"))))
     oos = walk_forward(panel)
     wk = oos["date"].nunique()
     print(f"walk-forward out-of-sample: {len(oos):,} rows over {wk} weeks "

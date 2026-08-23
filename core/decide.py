@@ -1,12 +1,12 @@
 """
 alpha.weekly — Stage 4 of WAVE 3.0 (see alpha/PLAN.md §4): the Sunday table.
 
-    python -m alpha.weekly
+    python -m alpha.core.decide
 
 Rebuilds the panel from the archive, trains on every week whose 4-week label is
 already realized (so the live model never touches an unfinished outcome), scores
 the NEWEST snapshot, prints the Mid Cap top-30 by net edge, and appends the full
-table to alpha/waves_log.csv.
+table to logs/waves_log.csv.
 
 THE LOG IS THE EXPERIMENT (Law 9). Rows are appended, timestamped, and never
 edited — in six months the frozen forecasts face reality with no room to narrate.
@@ -20,23 +20,15 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 
-try:  # local layout: alpha/ package inside the PRISM working tree
-    from alpha.odds import MODEL_FEATURES, _clean, _label, fit_predict_one
-    from alpha.panel import build_panel
-    from alpha.scan import compute_features
-    from alpha.track import compute_track
-except ImportError:  # standalone layout: modules at repo root (Streamlit Cloud)
-    from odds import MODEL_FEATURES, _clean, _label, fit_predict_one
-    from panel import build_panel
-    from scan import compute_features
-    from track import compute_track
+from .config import (MAX_PER_SECTOR, MODEL_VERSION, TOP_N, UNIVERSE_CATEGORY)
+from .odds import MODEL_FEATURES, _clean, _label, fit_predict_one
+from .panel import build_panel
+from .scan import compute_features
+from .track import compute_track
 
-ARCHIVE = os.path.join("alpha", "Alpha Resources", "Weekly", "Stocks_Backups Weekly")
-LOG = os.path.join("alpha", "waves_log.csv")
-TOP_N = 30
-MAX_PER_SECTOR = 3            # the seatbelt (PLAN §5) — not tunable
-UNIVERSE_CATEGORY = "Mid Cap"
-MODEL_VERSION = "3.0"
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ARCHIVE = os.path.join(_ROOT, "Alpha Resources", "Weekly", "Stocks_Backups Weekly")
+LOG = os.path.join(_ROOT, "logs", "waves_log.csv")
 
 
 def build_forecast() -> pd.DataFrame:

@@ -2,3 +2,5 @@
 Alpha Resources/
 *.parquet
 __pycache__/
+
+.pytest_cache/

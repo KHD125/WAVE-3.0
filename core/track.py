@@ -13,7 +13,7 @@ SECTOR (test T2)    sector_heat     sector's mean p_range_pos this week
 
 T1/T2 are the ONLY two pre-registered tests (PLAN §8 predictions: T1 ≈ +0.01 IC or
 less; T2 the best addition at +0.01–0.02, mostly overlapping range_pos). Run them
-once via `python -m alpha.track`, record the result in TEST_LEDGER.md, lock in or out.
+once via `python -m alpha.core.track`, record the result in TEST_LEDGER.md, lock in or out.
 
 The 3/sector portfolio cap stays regardless of T2 (the seatbelt rule): rotation is
 ridden through the probability model, never by concentrating.
@@ -132,10 +132,12 @@ def run_preregistered_tests(panel: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-if __name__ == "__main__":
-    from alpha.scan import compute_features
+if __name__ == "__main__":   # run as:  python -m alpha.core.track  (locally)
+    from .scan import compute_features
 
-    panel = pd.read_parquet("alpha/_panel_long.parquet")
+    import os
+    _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    panel = pd.read_parquet(os.path.join(_root, "_panel_long.parquet"))
     panel = compute_track(compute_features(panel))
     res = run_preregistered_tests(panel)
     print("PRE-REGISTERED TESTS T1 (time) + T2 (sector) — record verbatim in TEST_LEDGER.md")

@@ -1,0 +1,113 @@
+"""
+core.sources — where weekly snapshots come from. Three doors, one output shape:
+a list of (filename, bytes), which build_panel_from_files turns into the honest
+panel. Keeping acquisition here means app.py stays a display surface and the
+engine never learns where its data happened to come from.
+
+  local_archive_files()      the home machine's backup folder
+  load_csvs_from_drive()     the public Google Drive backup folder (loader ported
+                             from Alpha Trajectory's proven implementation)
+  build_panel_from_files()   (name, bytes) -> panel with forward returns + screen
+"""
+
+from __future__ import annotations
+
+import glob
+import io
+import os
+import re
+from typing import List, Optional, Tuple
+
+import pandas as pd
+
+from .panel import (add_forward_returns, apply_universe_screen,
+                    parse_date_from_filename, _normalize_snapshot)
+
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOCAL_ARCHIVE = os.path.join(_ROOT, "Alpha Resources", "Weekly", "Stocks_Backups Weekly")
+
+FileBytes = Tuple[str, bytes]
+
+
+def local_archive_files() -> List[FileBytes]:
+    """Every dated CSV in the on-disk archive (empty list on Streamlit Cloud)."""
+    paths = sorted(glob.glob(os.path.join(LOCAL_ARCHIVE, "*.csv")))
+    return [(os.path.basename(p), open(p, "rb").read()) for p in paths]
+
+
+def build_panel_from_files(files: List[FileBytes],
+                           horizons_weeks: Tuple[int, ...] = (4,)) -> pd.DataFrame:
+    """(filename, bytes) -> the stage-0 panel. Same laws as panel.build_panel."""
+    frames = []
+    for name, data in files:
+        date = parse_date_from_filename(name)
+        if date is None:
+            continue
+        raw = pd.read_csv(io.BytesIO(data), encoding="utf-8", low_memory=False)
+        frames.append(_normalize_snapshot(raw, date))
+    if not frames:
+        raise ValueError("No dated Stocks_Weekly_*.csv files found.")
+    panel = pd.concat(frames, ignore_index=True, sort=False)
+    panel = panel.sort_values(["ticker", "date"], kind="mergesort").reset_index(drop=True)
+    panel, _report = add_forward_returns(panel, horizons_weeks=horizons_weeks)
+    return apply_universe_screen(panel)
+
+
+# ── Google Drive public-folder loader ─────────────────────────────────────────
+
+def normalize_drive_key(raw: str) -> str:
+    key = (raw or "").strip()
+    if "drive.google.com" in key and "/folders/" in key:
+        key = key.split("/folders/", 1)[1].split("?", 1)[0].split("/", 1)[0].strip()
+    return key
+
+
+def load_csvs_from_drive(folder_key: str) -> Tuple[List[FileBytes], Optional[str]]:
+    """Download every CSV from a public Drive folder. Returns (files, error)."""
+    import requests
+
+    key = normalize_drive_key(folder_key)
+    if not key:
+        return [], "Folder key is empty."
+    session = requests.Session()
+    session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+    try:
+        resp = session.get(f"https://drive.google.com/drive/folders/{key}", timeout=30)
+        resp.raise_for_status()
+    except Exception as e:
+        return [], f"Could not open the Drive folder: {e}"
+
+    entries = re.findall(r'\["(1[a-zA-Z0-9_-]{10,})","([^"]+\.csv)"', resp.text, re.IGNORECASE)
+    if not entries:
+        ids = list(dict.fromkeys(re.findall(r'/file/d/(1[a-zA-Z0-9_-]{10,})', resp.text)
+                                 + re.findall(r'data-id="(1[a-zA-Z0-9_-]{10,})"', resp.text)))
+        names = re.findall(r'(Stocks_Weekly[^"<>\s]*\.csv)', resp.text, re.IGNORECASE)
+        entries = list(zip(ids, names)) if names else [(i, f"file_{i}.csv") for i in ids]
+
+    seen, files = set(), []
+    for fid, fname in entries:
+        if fid in seen:
+            continue
+        seen.add(fid)
+        url = f"https://drive.google.com/uc?export=download&id={fid}"
+        try:
+            dl = session.get(url, timeout=60)
+            content = dl.content
+            if b"<html" in content[:200].lower() and b"confirm=" in content:
+                m = re.search(r"confirm=([0-9A-Za-z_-]+)", dl.text)
+                if m:
+                    content = session.get(f"{url}&confirm={m.group(1)}", timeout=90).content
+            head = content[:500].decode("utf-8", errors="ignore").lower()
+            if "<html" in head and "ticker" not in head:
+                continue
+            cd = dl.headers.get("Content-Disposition", "")
+            m = re.search(r'filename="?([^";\n]+)"?', cd)
+            real = m.group(1).strip() if m else fname
+            if real.lower().endswith(".csv"):
+                files.append((real, content))
+        except Exception:
+            continue
+    if not files:
+        return [], ("No CSVs downloaded. Check: folder sharing = 'Anyone with the link → "
+                    "Viewer', and the folder holds Stocks_Weekly_*.csv files.")
+    return files, None

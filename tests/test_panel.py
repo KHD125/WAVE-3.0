@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from alpha.panel import (
+from core.panel import (
     CRORE,
     add_forward_returns,
     apply_universe_screen,

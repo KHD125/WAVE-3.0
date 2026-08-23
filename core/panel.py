@@ -59,8 +59,8 @@ NUMERIC_COLUMNS: Tuple[str, ...] = ("rvol", "pe", "eps_current", "eps_last_qtr",
 # Carried through untouched
 STRING_COLUMNS: Tuple[str, ...] = ("ticker", "company_name", "category", "sector", "industry")
 
-# '₹12,987 Cr' -> 12987.0 crore. 1 crore = 1e7 rupees.
-CRORE = 1e7
+# Locked thresholds live in core/config.py — panel re-exports CRORE for callers.
+from .config import CRORE, MIN_MARKET_CAP, MIN_PRICE, MIN_TURNOVER  # noqa: E402
 
 # A weekly move beyond this is treated as SUSPECT and checked against the 52w
 # levels for a corporate action. Chosen well above genuine weekly volatility
@@ -341,9 +341,9 @@ def _flag_corporate_actions(
 
 def apply_universe_screen(
     panel: pd.DataFrame,
-    min_market_cap: float = 500 * CRORE,
-    min_price: float = 50.0,
-    min_turnover: float = 1e7,
+    min_market_cap: float = MIN_MARKET_CAP,
+    min_price: float = MIN_PRICE,
+    min_turnover: float = MIN_TURNOVER,
 ) -> pd.DataFrame:
     """
     Mark (never delete) which rows are investable, as `in_universe`.

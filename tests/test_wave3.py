@@ -12,9 +12,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from alpha.odds import EMBARGO_DAYS, calibration_table, training_mask
-from alpha.scan import FEATURES, compute_features
-from alpha.track import _past_date_map, _run_length
+from core.odds import EMBARGO_DAYS, calibration_table, training_mask
+from core.scan import FEATURES, compute_features
+from core.track import _past_date_map, _run_length
 
 
 def _mini_panel():
@@ -109,7 +109,7 @@ def test_calibration_table_shape_and_honesty_columns():
 # ── weekly: the log is append-only (Law 9) ────────────────────────────────────
 
 def test_append_log_never_truncates(tmp_path, monkeypatch):
-    import alpha.weekly as weekly
+    import core.decide as weekly
     monkeypatch.setattr(weekly, "LOG", str(tmp_path / "waves_log.csv"))
     row = pd.DataFrame([{
         "logged_at_utc": "2026-08-23T00:00:00+00:00", "model_version": "3.0",
