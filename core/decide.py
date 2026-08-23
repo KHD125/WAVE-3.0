@@ -57,8 +57,22 @@ def score_panel(panel: pd.DataFrame) -> Tuple[pd.DataFrame, dict, pd.DataFrame]:
     if train.empty:
         raise ValueError("No resolved labels — need at least 4 weeks of history.")
 
+    # COUNT THE ODDS ON THE UNIVERSE WE ACTUALLY BUY (v3.2). Counting across all
+    # categories while trading only Mid+Small reported a rate for a population we
+    # never touch: decile 10 was 11.96% all-in against 15.55% for Mid+Small alone.
+    # That is not a scoring bug — the ranking is identical either way — but the
+    # STATED number is what February grades against the realized hit rate of these
+    # picks, and a stated rate 3.6pp too low against an actual drawn from a better
+    # population flatters us. An error that makes the system look good is the one
+    # kind this project cannot tolerate.
+    basis = train[train["category"].isin(UNIVERSE_CATEGORIES)]
+    if basis.empty:
+        raise ValueError(
+            f"No resolved labels inside {UNIVERSE_CATEGORIES} — the odds must be "
+            "counted on the universe that is traded, so there is nothing to state.")
+
     # v3.1: rank by ONE measured column. No model, no fitted parameters.
-    week = attach_counted_odds(d[d["date"] == latest], train)
+    week = attach_counted_odds(d[d["date"] == latest], basis)
     table = week[week["category"].isin(UNIVERSE_CATEGORIES)].sort_values(
         RANK_FEATURE, ascending=False, kind="mergesort")
     table = table[table.groupby("sector").cumcount() < MAX_PER_SECTOR].head(TOP_N)
@@ -67,9 +81,14 @@ def score_panel(panel: pd.DataFrame) -> Tuple[pd.DataFrame, dict, pd.DataFrame]:
         "latest": latest,
         "trained_through": train["date"].max(),
         "weeks": int(train["date"].nunique()),
-        "base_up": float(train["y_up"].mean()),
-        "base_dn": float(train["y_dn"].mean()),
+        # Base rates on the SAME basis as the odds, so `lift` compares like with
+        # like. A lift built from an all-category base under a Mid+Small rate is
+        # two different populations divided by each other.
+        "base_up": float(basis["y_up"].mean()),
+        "base_dn": float(basis["y_dn"].mean()),
         "universe": int(len(week)),
+        "odds_basis": " + ".join(UNIVERSE_CATEGORIES),
+        "odds_n": int(len(basis)),
     }
     # Attach this week's probabilities back onto the full frame so the UI can
     # show odds beside every historical row without a second merge upstream.

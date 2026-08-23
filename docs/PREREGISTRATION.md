@@ -82,4 +82,44 @@ not restart.
 - Top-30 trails the universe by >5% over any 26 logged weeks → paused, autopsy.
 - Any leakage → version retired permanently, log annotated, never reused.
 
-**v3.1 is the last change before 2027-02-21.** Anything further waits for the window.
+**v3.1 was declared the last change before 2027-02-21.** One addendum follows; it is
+recorded here rather than made quietly, because a pre-registration that gets edited
+without a trace is worth nothing.
+
+---
+
+## Addendum 1 — 2026-08-23 · v3.1 -> v3.2 · stated odds counted on the traded universe
+
+**What was wrong.** The odds were counted across every category while only Mid+Small
+were ever bought. Decile 10 was stated at **11.96%** (n=4,501, all categories) when the
+population actually purchased waved at **15.55%** (n=3,331, Mid+Small). The stated
+number described a population the system never touches.
+
+**Why it could not wait for the window.** `track_record` grades the STATED rate against
+the REALIZED hit rate of the picks. Stated 3.6pp too low, against an actual drawn from
+a better population, produces a spurious positive gap — the system would have looked
+better calibrated than it is, for 26 weeks, and the February verdict would have been
+built on it. The error ran in the direction that flatters us, which is the one direction
+this project treats as unacceptable.
+
+**The test that separates a correction from a tune: does it change a pick?** It does not.
+Verified on the live archive — the 30 selected tickers and their rank order are byte
+identical before and after. The ranking never consulted the odds; `range_pos` alone
+orders the table. Only the reported statistic moved. A change that alters selection
+would be a tune and would have waited for the window.
+
+**What changed.** `score_panel` restricts the counting basis to `UNIVERSE_CATEGORIES`
+before `attach_counted_odds`, and `base_up`/`base_dn` move to the same basis so `lift`
+divides like by like (top-decile lift reads 1.405x on the consistent basis, against
+1.236x when a Mid+Small rate was divided by an all-category base).
+
+**Log consequence.** `MODEL_VERSION` -> **3.2**. `LOG_COLUMNS` is unchanged, so the log
+file is NOT archived; the one existing v3.1 row (snapshot 2026-08-16) stays exactly as
+frozen. February must group by `model_version` and never average a v3.1 stated rate
+with a v3.2 one — they describe different populations.
+
+**Pinned by** `test_odds_are_counted_on_the_traded_universe_not_everything` and
+`test_score_panel_counts_on_universe_categories`.
+
+**Nothing else moves before 2027-02-21.** This addendum is a measurement correction, not
+a licence. Any change that touches a pick waits for the window.

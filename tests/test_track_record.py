@@ -322,3 +322,71 @@ def test_every_log_writing_entry_point_checks_freshness():
             f"{sub}/{name} writes the permanent log but never calls assert_fresh — "
             "it can freeze a forecast for a window that already happened.")
     assert checked, "no log-writing entry point found; the contract is not being tested"
+
+
+# ── the stated odds must describe the universe actually bought ────────────────
+
+def test_odds_are_counted_on_the_traded_universe_not_everything():
+    """Counting across all categories while buying only Mid+Small stated a rate for
+    a population never touched: decile 10 read 11.96% against 15.55% for Mid+Small
+    alone on the live archive.
+
+    The ranking is identical either way, so this never moved a pick. It corrupts
+    the VERDICT: track_record compares the stated rate to the realized hit rate of
+    the picks, so a stated number too low against an actual drawn from a better
+    population makes the system look better calibrated than it is. An error that
+    flatters us is the one kind this project cannot tolerate.
+
+    The fixture makes the two populations disagree hard -- excluded categories
+    never wave, traded ones often do -- so all-category counting cannot pass.
+    """
+    import numpy as np
+    from core.counted import attach_counted_odds, decile_table
+
+    rng = np.random.default_rng(0)
+    n_per = 600
+    rows = []
+    for cat, wave_p in (("Mid Cap", 0.40), ("Small Cap", 0.40), ("Large Cap", 0.0)):
+        for i in range(n_per):
+            rows.append({"ticker": f"{cat[:2]}{i}", "category": cat,
+                         "p_range_pos": rng.random(),
+                         "y_up": float(rng.random() < wave_p)})
+    train = pd.DataFrame(rows)
+
+    traded = train[train["category"].isin(("Mid Cap", "Small Cap"))]
+    on_traded = decile_table(traded)
+    on_everything = decile_table(train)
+    assert not on_traded.empty and not on_everything.empty
+    # The excluded population drags the all-category rate down by roughly a third.
+    assert on_traded["rate"].mean() > on_everything["rate"].mean() * 1.3, (
+        "fixture must make the two bases disagree, else this test proves nothing")
+
+    week = traded.assign(date=pd.Timestamp("2026-01-04"))
+    attached = attach_counted_odds(week, traded)
+    stated = float(attached["hist_rate"].mean())
+
+    assert stated == pytest.approx(float(on_traded["rate"].mean()), abs=0.02), (
+        "stated odds must come from the traded universe")
+    assert stated > float(on_everything["rate"].mean()) * 1.2, (
+        "stated odds still reflect the all-category basis -- score_panel is "
+        "counting on rows it never buys")
+
+
+def test_score_panel_counts_on_universe_categories():
+    """Static guard on the wiring above: score_panel must restrict the counting
+    basis before calling attach_counted_odds. A future edit that passes the full
+    `train` frame again would silently restore the flattering number."""
+    import ast
+    import inspect
+    from core import decide
+
+    src = inspect.getsource(decide.score_panel)
+    tree = ast.parse(src.strip())
+    call = next(n for n in ast.walk(tree)
+                if isinstance(n, ast.Call)
+                and getattr(n.func, "id", "") == "attach_counted_odds")
+    basis_arg = call.args[1]
+    assert isinstance(basis_arg, ast.Name) and basis_arg.id == "basis", (
+        "attach_counted_odds must receive the universe-restricted `basis`, "
+        f"not {ast.dump(basis_arg)[:60]}")
+    assert "UNIVERSE_CATEGORIES" in src and "basis =" in src

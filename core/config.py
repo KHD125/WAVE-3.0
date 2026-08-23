@@ -8,7 +8,15 @@ If you are editing this file outside a review window, you are the failure mode
 this system was built to prevent.
 """
 
-MODEL_VERSION = "3.1"
+# 3.2 (2026-08-23): the stated odds are now COUNTED ON THE TRADED UNIVERSE.
+# Counting across every category while buying only Mid+Small reported decile 10 at
+# 11.96% when the population actually bought waved at 15.55%. The picks are byte
+# identical either way — ranking never touched the odds — but February grades the
+# STATED rate against the realized hit rate of these picks, and a stated number
+# 3.6pp too low against an actual drawn from a better population flatters the
+# system. The version is bumped so the log stays gradeable: rows carrying the old
+# basis and the new one must never be averaged together.
+MODEL_VERSION = "3.2"
 FIRST_REVIEW = "2027-02-21"          # 26 logged weeks after the first frozen forecast
 
 # ── Data source ───────────────────────────────────────────────────────────────
