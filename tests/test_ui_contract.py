@@ -136,3 +136,55 @@ def test_powershell_fallback_is_ascii_and_parses():
     code = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("#"))
     assert code.count('"') % 2 == 0, "unbalanced double quotes in weekly.ps1"
     assert code.count("{") == code.count("}"), "unbalanced braces in weekly.ps1"
+
+
+def test_requirements_are_internally_consistent():
+    """requirements.txt pinned streamlit~=1.54 beside pandas~=3.0, which CANNOT
+    resolve: streamlit<=1.55 declares `pandas<3`. Streamlit Cloud's installer
+    aborted with ResolutionImpossible before the app was ever built.
+
+    Nothing caught it because nothing ever resolved the file. The dev venv had both
+    installed side by side -- pip only WARNS when an upgrade breaks an existing
+    pin, so the environment worked locally while being impossible to reproduce.
+    This is `pip check` narrowed to our own pins, and it needs no network.
+
+    SKIPS when the environment does not match requirements.txt, so a drifted dev
+    venv reports honestly instead of raising a false alarm.
+    """
+    import os
+    from importlib.metadata import PackageNotFoundError, distribution, distributions
+    from packaging.requirements import Requirement
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    lines = [l.split("#")[0].strip()
+             for l in open(os.path.join(root, "requirements.txt"), encoding="utf-8")]
+    pinned = {}
+    for line in lines:
+        if not line:
+            continue
+        req = Requirement(line)
+        try:
+            have = distribution(req.name).version
+        except PackageNotFoundError:
+            pytest.skip(f"{req.name} not installed; env does not match requirements.txt")
+        if not req.specifier.contains(have, prereleases=True):
+            pytest.skip(f"{req.name} {have} does not match the pin '{line}'; "
+                        "resolve requirements.txt in a clean venv to test it")
+        pinned[req.name.lower().replace("-", "_")] = have
+
+    # Every installed package's own declared needs must admit the versions we pin.
+    conflicts = []
+    for dist in distributions():
+        for raw in (dist.requires or []):
+            dep = Requirement(raw)
+            if dep.marker and not dep.marker.evaluate():
+                continue                       # extras / platform-gated, not active
+            key = dep.name.lower().replace("-", "_")
+            if key in pinned and not dep.specifier.contains(pinned[key], prereleases=True):
+                conflicts.append(
+                    f"{dist.metadata['Name']} {dist.version} requires "
+                    f"{dep.name}{dep.specifier}, but requirements.txt pins "
+                    f"{dep.name}=={pinned[key]}")
+    assert not conflicts, (
+        "requirements.txt cannot be installed as written -- Streamlit Cloud will "
+        "abort with ResolutionImpossible:\n  " + "\n  ".join(sorted(set(conflicts))))

@@ -116,3 +116,39 @@ wrong precedent. What a February reader needs to know:
 
 **Next clean freeze:** after the Sunday 21:00 IST backup lands, `python -m core.decide`
 sees age 0.
+
+## 7. Streamlit Cloud deploy failed: requirements.txt could not resolve (2026-08-23) · FIXED
+
+`ResolutionImpossible`. One line caused it:
+
+```
+streamlit 1.54.0 depends on pandas<3 and >=1.4.0
+The user requested pandas~=3.0.0
+```
+
+`streamlit<=1.55` declares `pandas<3`, so `streamlit~=1.54.0` beside `pandas~=3.0.0`
+is unsatisfiable and Cloud's installer aborts **before the app is ever built**. The
+`rich`/`pygments` reinstall further down that log is Cloud setting up its own
+fallback exception logger — unrelated, and a red herring.
+
+**Why nothing caught it:** the file was never resolved end to end. The dev venv had
+streamlit 1.54.0 and pandas 3.0.0 installed side by side because pip only WARNS when
+an upgrade breaks an existing pin — `pip check` reported it while everything ran
+fine locally. The environment worked and was simultaneously impossible to reproduce.
+
+**Fix:** `streamlit~=1.56.0`, the EARLIEST release permitting pandas 3. Deliberately
+not the newest (1.62), which swaps Tornado for Uvicorn/Starlette — a large change to
+absorb mid-experiment for no benefit. Verified in a clean venv built from
+requirements.txt alone: resolves, and all 58 tests pass including the AppTest suite
+that renders the real app.
+
+**Pinned by** `test_requirements_are_internally_consistent` — `pip check` narrowed to
+our own pins, needs no network, and reproduces this exact failure offline. It SKIPS
+when the environment does not match requirements.txt, so a drifted dev venv reports
+honestly rather than raising a false alarm.
+
+**Still unverified: Python 3.14.** Cloud runs 3.14.7; this machine has only 3.13 and
+3.11, so the suite has never run on 3.14. The cp314 wheels all exist (visible in the
+deploy log), and the code is plain pandas/numpy, so the risk is low — but it is not
+zero and it has not been tested. If the next deploy fails on 3.14, set the Python
+version in the Cloud app's Advanced settings; it cannot be pinned from the repo.

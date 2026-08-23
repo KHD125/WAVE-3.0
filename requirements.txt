@@ -9,7 +9,16 @@
 # rows — the experiment silently invalidates itself with no code change from us.
 # Reproducibility over freshness, until the February review.
 #
-# Versions below are exactly those the 50-test suite passes on (2026-08-23).
+# Versions below are exactly those the test suite passes on (2026-08-23).
+#
+# streamlit 1.56.0, NOT 1.54.0: streamlit<=1.55 declares `pandas<3`, so pinning
+# 1.54 beside pandas~=3.0.0 is unsatisfiable and Streamlit Cloud's installer
+# aborts with ResolutionImpossible before the app is ever built. It went unnoticed
+# because the local venv had both installed side by side — pip only WARNS when an
+# upgrade breaks an existing pin, so `pip check` flagged it while nothing failed.
+# 1.56 is the EARLIEST release that permits pandas 3; deliberately not the newest
+# (1.62), which swaps Tornado for Uvicorn/Starlette — a far larger change to take
+# on mid-experiment for no benefit.
 streamlit~=1.56.0
 pandas~=3.0.0
 numpy~=2.4.0
