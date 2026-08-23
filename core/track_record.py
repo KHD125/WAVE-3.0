@@ -28,7 +28,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from .config import LABEL_HORIZON_WEEKS, WAVE_PCT
+from .config import LABEL_HORIZON_WEEKS, REVIEW_WEEKS, WAVE_PCT
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG = os.path.join(_ROOT, "logs", "waves_log.csv")
@@ -129,3 +129,39 @@ def summary(panel: pd.DataFrame, oos: Optional[pd.DataFrame] = None,
             rec["pending"] = int(len(load_log(path)) - len(graded))
             return rec
     return None
+
+
+def progress(panel: pd.DataFrame, path: str = LOG) -> dict:
+    """How far the pre-registered experiment has actually got.
+
+    The Summary tab leads with this rather than with picks. A forecast engine
+    showing a stock list and no record of its own history is the shape of every
+    system this one replaced: confident, unfalsifiable, and never checked.
+
+    `graded` counts snapshots whose 4-week window has fully elapsed. Rows still
+    in flight are neither hits nor misses and are reported separately — counting
+    them either way would be the same lie in two directions.
+    """
+    log = load_log(path)
+    if log.empty or "snapshot_date" not in log.columns:
+        return {"weeks": 0, "rows": 0, "graded": 0, "pending": 0,
+                "target": REVIEW_WEEKS, "versions": [], "first": None,
+                "last": None, "next_grade": None}
+
+    graded = grade_log(panel, path=path)
+    graded_weeks = (int(graded["snapshot_date"].nunique())
+                    if not graded.empty and "snapshot_date" in graded else 0)
+    weeks = int(log["snapshot_date"].nunique())
+    last = log["snapshot_date"].max()
+    return {
+        "weeks": weeks,
+        "rows": int(len(log)),
+        "graded": graded_weeks,
+        "pending": weeks - graded_weeks,
+        "target": REVIEW_WEEKS,
+        "versions": sorted(set(log["model_version"].astype(str))),
+        "first": log["snapshot_date"].min(),
+        "last": last,
+        # When the NEWEST frozen forecast becomes gradeable.
+        "next_grade": last + pd.Timedelta(weeks=LABEL_HORIZON_WEEKS),
+    }

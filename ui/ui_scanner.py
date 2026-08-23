@@ -119,7 +119,12 @@ def render(ctx: dict) -> None:
     if np.isfinite(hist["rate"]):
         lift = hist["lift"]
         tone = "good" if lift >= 1.3 else ("warn" if lift >= 1.0 else "bad")
-        hist_card = (f"{hist['rate']:.1%}", f"base {hist['base']:.1%} · lift {lift:.2f}×", tone)
+        # NAME THE POPULATION. The Scanner spans EVERY category, so its base is
+        # not the Summary's — that one counts only Mid+Small, the universe
+        # actually traded (v3.2). Two unlabelled "base rate" figures differing
+        # across tabs is precisely how a reader stops trusting both.
+        hist_card = (f"{hist['rate']:.1%}",
+                     f"base {hist['base']:.1%} all-cap · lift {lift:.2f}×", tone)
     else:
         hist_card = ("—", f"only {hist['n']} past matches — too few to grade", "warn")
 
@@ -128,7 +133,8 @@ def render(ctx: dict) -> None:
         ("Pass your screen", f"{len(f):,}",
          f"{len(f)/max(len(week),1)*100:.0f}% of the universe", ""),
         (f"Historical wave rate", hist_card[0], hist_card[1], hist_card[2]),
-        ("Evidence behind it", f"{hist['n']:,}", f"rows over {hist['weeks']} weeks", ""),
+        ("Evidence behind it", f"{hist['n']:,}",
+         f"all-cap rows over {hist['weeks']} weeks", ""),
     ])
     st.caption(
         f"**Historical wave rate** = of every past stock-week matching *these same "

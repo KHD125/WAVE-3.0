@@ -18,6 +18,7 @@ this system was built to prevent.
 # basis and the new one must never be averaged together.
 MODEL_VERSION = "3.2"
 FIRST_REVIEW = "2027-02-21"          # 26 logged weeks after the first frozen forecast
+REVIEW_WEEKS = 26                    # how many frozen weeks the verdict needs
 
 # ── Data source ───────────────────────────────────────────────────────────────
 # The public Drive folder holding Stocks_Weekly_*.csv. NOT a secret: the folder is

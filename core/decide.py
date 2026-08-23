@@ -22,7 +22,7 @@ import pandas as pd
 
 from .config import (LABEL_HORIZON_WEEKS, MAX_PER_SECTOR, MAX_SNAPSHOT_AGE_DAYS,
                      MODEL_VERSION, RANK_FEATURE, TOP_N, UNIVERSE_CATEGORIES)
-from .counted import attach_counted_odds
+from .counted import attach_counted_odds, decile_table, summarise
 from .odds import _clean, _label
 from .scan import compute_features
 from .track import compute_track
@@ -86,10 +86,20 @@ def score_panel(panel: pd.DataFrame) -> Tuple[pd.DataFrame, dict, pd.DataFrame]:
         # two different populations divided by each other.
         "base_up": float(basis["y_up"].mean()),
         "base_dn": float(basis["y_dn"].mean()),
-        "universe": int(len(week)),
+        "universe": int(len(week)),                       # every category, screened
+        # The count the Summary quotes, because that tab is about what is BOUGHT.
+        # Labelling an all-category total "Mid + Small" is the same species of
+        # error as counting the odds on a population never traded (v3.2).
+        "universe_traded": int(week["category"].isin(UNIVERSE_CATEGORIES).sum()),
         "odds_basis": " + ".join(UNIVERSE_CATEGORIES),
         "odds_n": int(len(basis)),
     }
+    # The counted curve itself, and its shape. Computed HERE because a display
+    # layer that recomputes a number drifts from the engine that logged it — the
+    # exact failure that let Wave Detection's ranking mean something different in
+    # every tab. `summarise` existed since v3.1 and no surface ever showed it.
+    meta["deciles"] = decile_table(basis)
+    meta["shape"] = summarise(meta["deciles"])
     # Attach this week's probabilities back onto the full frame so the UI can
     # show odds beside every historical row without a second merge upstream.
     scored = d.merge(week[["ticker", "date", "decile", "hist_rate", "hist_lift",

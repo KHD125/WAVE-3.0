@@ -28,7 +28,8 @@ if _HERE not in sys.path:
 from core.config import (MAX_PER_SECTOR, MODEL_VERSION, RANK_FEATURE,  # noqa: E402
                          TOP_N, UNIVERSE_CATEGORIES)
 from core.decide import score_panel                                      # noqa: E402
-from core.track_record import summary as track_summary                   # noqa: E402
+from core.track_record import (progress as track_progress,             # noqa: E402
+                               summary as track_summary)
 from core.sources import (LOCAL_ARCHIVE, build_panel_from_files,      # noqa: E402
                           load_csvs_from_drive, local_archive_files)
 from ui import (ui_backtest, ui_components, ui_pulse, ui_reference,      # noqa: E402
@@ -54,7 +55,10 @@ def _pipeline(files):
     table, meta, scored = score_panel(panel)
     # The live track record: frozen forecasts vs what actually happened.
     history = track_summary(panel)
-    return table, meta, scored, history
+    # How far the pre-registered experiment has got. The Summary tab leads with
+    # this, so it must come from core like every other number.
+    prog = track_progress(panel)
+    return table, meta, scored, history, prog
 
 
 # ── Sidebar: data source ─────────────────────────────────────────────────────
@@ -104,8 +108,9 @@ def main() -> None:
                    "(+15% in 4 weeks) and of a crash — judged by whether those odds come true.")
         return
 
-    table, meta, scored, history = _pipeline(files)
-    ctx = {"table": table, "meta": meta, "scored": scored, "history": history}
+    table, meta, scored, history, prog = _pipeline(files)
+    ctx = {"table": table, "meta": meta, "scored": scored,
+           "history": history, "progress": prog}
 
     tabs = st.tabs(["📊 Summary", "🔍 Deep Scanner", "🔬 The Tear Sheet",
                     "🌊 Pulse", "🧪 Backtest", "📖 Reference"])
