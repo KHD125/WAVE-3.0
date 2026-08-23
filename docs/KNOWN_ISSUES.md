@@ -152,3 +152,39 @@ honestly rather than raising a false alarm.
 deploy log), and the code is plain pandas/numpy, so the risk is low — but it is not
 zero and it has not been tested. If the next deploy fails on 3.14, set the Python
 version in the Cloud app's Advanced settings; it cannot be pinned from the repo.
+
+## 8. A daily file dated D holds the PREVIOUS trading day's close (2026-08-23) · DATA FACT
+
+The filename is the write date, not the data date. The daily backup runs just after
+midnight IST, so it captures the session that already closed.
+
+Measured against the Sunday weekly snapshots (which hold Friday's close, markets
+being shut Sat/Sun), % of prices identical within 0.5%:
+
+| daily file dated | match |
+|---|---|
+| previous Thursday | 19% |
+| previous Friday | 36% |
+| **previous Saturday** | **100%** |
+| **next Monday** | **100%** |
+| next Tuesday | 23% |
+
+So `Stocks_Daily_2026-03-09` (a Monday) contains the close of Friday 2026-03-06.
+
+**Consequence:** anything that joins daily files on their filename date is off by one
+trading day, and a forward return built that way is shifted a full session — the
+class of bug that made the old Wave/Trajectory backtests unfalsifiable. The weekly
+path is unaffected: `core/panel.py` uses only the weekly archive, where the Sunday
+label and the Friday close it carries are a fixed, consistent pair.
+
+**Also:** the two archives never overlap by date. Daily holds Mon-Fri (plus 7
+Saturdays), weekly holds Sundays. Zero of the 52 weekly dates appear in the daily
+folder, so nothing is duplicated between them.
+
+**Why weekly is still the training set** (asked 2026-08-23): daily starts 2026-03-04,
+weekly starts 2025-08-30 -- 186 extra days. And for a 4-week label, consecutive daily
+rows overlap 96% (27 of 28 days shared), so they are near-copies, not new evidence:
+~6 independent windows from daily against ~12 from weekly. Daily's real value is
+elsewhere -- it is the only source that can show WHEN a -20% trailing stop triggered,
+which Sunday-only data structurally cannot see (weekly closes overstate stop
+performance by up to 22pp/yr).
