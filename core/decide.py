@@ -131,9 +131,14 @@ def assert_fresh(snapshot, today=None, max_age_days: int = MAX_SNAPSHOT_AGE_DAYS
     A forecast is only a forecast if it is written BEFORE the window it predicts.
     Nothing in the pipeline enforced that: `score_panel` faithfully scores whatever
     the newest snapshot happens to be, so when the upstream backup stalls, the job
-    keeps succeeding and freezes a weeks-old snapshot as this week's call. The
-    observed Drive stall was 21 days — 75% of a 28-day label window already elapsed,
-    and the row lands in the log indistinguishable from an honest one.
+    keeps succeeding and freezes a weeks-old snapshot as this week's call. At 21 days
+    that is 75% of a 28-day label window already elapsed, and the row lands in the log
+    indistinguishable from an honest one.
+
+    (The 21-day case that prompted this guard turned out to be a truncated folder
+    listing, not a stalled backup — KNOWN_ISSUES #2. The guard stands anyway: a real
+    stall is silent in exactly the same way, and so is a listing bug. Both need to
+    stop the run.)
 
     Fails LOUDLY rather than skipping. A stalled data pipeline needs a human; a
     green run that froze nothing is the silent stop this whole design exists to

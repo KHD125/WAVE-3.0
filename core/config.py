@@ -23,7 +23,7 @@ FIRST_REVIEW = "2027-02-21"          # 26 logged weeks after the first frozen fo
 # The public Drive folder holding Stocks_Weekly_*.csv. NOT a secret: the folder is
 # already shared "Anyone with the link -> Viewer", so the URL protects nothing and
 # hiding it in a repo variable only creates a step someone must remember. Verified
-# 2026-08-23: resolves to 50 dated files, 2025-08-30 -> 2026-08-02.
+# 2026-08-23: resolves to 53 dated files, 2025-08-30 -> 2026-08-23.
 # Override at runtime with the WAVE_DRIVE_FOLDER env var if the folder ever moves.
 DRIVE_FOLDER_WEEKLY = "https://drive.google.com/drive/folders/1r9Y2E3_fOCLiBTBFFwu9KwG_AVopzsLq"
 # Daily archive — execution testing only, NEVER training (ledger #56: half the market
@@ -47,8 +47,11 @@ LABEL_HORIZON_WEEKS = 4
 # The weekly backup lands Sunday 21:00 IST and the job runs 23:00 IST, so a healthy
 # run sees an age of 0. A stalled backup pipeline shows up as 7+, and freezing a
 # week-old snapshot silently spends part of the label window before the forecast is
-# even written — at 21 days (the observed Drive stall) 75% of the outcome is already
-# determined, and the row is indistinguishable in the log from an honest one.
+# even written — at 21 days, 75% of the outcome is already determined, and the row is
+# indistinguishable in the log from an honest one. (The 21-day case that motivated
+# this was a MEASUREMENT ARTIFACT — a truncated folder listing, see KNOWN_ISSUES #2 —
+# but a genuinely stalled backup produces the same silence, and nothing downstream
+# can tell the difference. The guard is right; only its origin story was wrong.)
 # 5 admits a mid-week manual dispatch and refuses a whole missed week.
 MAX_SNAPSHOT_AGE_DAYS = 5
 

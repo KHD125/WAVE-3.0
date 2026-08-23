@@ -204,3 +204,52 @@ def test_report_counts_are_populated():
     assert report.delistings == 1
     assert 0.0 <= report.coverage[1] <= 100.0
     assert "delistings" in report.render()
+
+
+# ── Drive listing: the folder page caps at ~50 and lies about it ──────────────
+
+def test_folder_listing_is_not_capped_by_the_50_item_page():
+    """The /drive/folders/ page embeds only the first ~50 entries; the rest load on
+    scroll. A scraper therefore sees a truncated folder and CANNOT TELL -- there is
+    no error, just a shorter list whose newest files are missing.
+
+    That cost a real misdiagnosis: a folder holding 53 weekly snapshots reported 50,
+    the three NEWEST were the ones dropped, and the conclusion drawn was that the
+    upstream backup had stalled three weeks earlier. Nothing had stalled. A silent
+    cap that presents as stale data is worse than a crash, because it gets believed.
+
+    Both listings are read and unioned by file id, so neither blind spot can hide a
+    week.
+    """
+    from core.sources import _list_folder
+
+    class _Resp:
+        def __init__(self, text): self.text = text
+
+    class _Session:
+        def __init__(self, embed): self._embed = embed
+        def get(self, url, timeout=None): return _Resp(self._embed)
+
+    # embeddedfolderview: the full 53. Entry blocks in DOM order.
+    embed = "".join(
+        f'<div class="flip-entry"><a href="/file/d/{"i%02d" % i}xxxxxxxxxxxxxxxxxxxx/view">'
+        f'</a><div class="flip-entry-title">Stocks_Weekly_wk{i:02d}.csv</div></div>'
+        for i in range(53))
+    # folder page: only the first 50, exactly as Drive serves it.
+    page = "".join(f'["1{"p%02d" % i}xxxxxxxxxx","Stocks_Weekly_wk{i:02d}.csv"]'
+                   for i in range(50))
+
+    out = _list_folder(_Session(embed), "KEY", page)
+    names = {n for _, n in out}
+    assert len(names) == 53, f"listing capped at {len(names)} -- the newest weeks are gone"
+    assert "Stocks_Weekly_wk52.csv" in names, "the NEWEST file is the one a cap drops"
+
+    # The union must survive the embed endpoint failing entirely.
+    class _Dead:
+        def get(self, url, timeout=None): raise OSError("no network")
+    fallback = _list_folder(_Dead(), "KEY", page)
+    assert len(fallback) == 50, "must still fall back to the folder page"
+
+    # ...and survive the folder page being unparseable.
+    only_embed = _list_folder(_Session(embed), "KEY", "<html>nothing here</html>")
+    assert len(only_embed) == 53

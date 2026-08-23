@@ -89,6 +89,50 @@ def normalize_drive_key(raw: str) -> str:
     return key
 
 
+# The /drive/folders/ page embeds only the FIRST ~50 entries; the rest arrive by
+# scroll, which a scraper never triggers. That cap does not look like an error — it
+# looks like a folder that stopped receiving files. It cost a real diagnosis: a
+# folder holding 53 weekly snapshots reported 50, the three NEWEST were the ones
+# dropped, and the conclusion drawn was "the upstream backup has stalled since
+# 2026-08-02" when nothing had stalled at all. A silent cap that presents as stale
+# data is worse than a crash.
+#
+# embeddedfolderview returns the whole listing as plain HTML with no JS. Both are
+# read and UNIONED by file id, so neither one's blind spot can hide a week.
+_EMBED_URL = "https://drive.google.com/embeddedfolderview?id={key}#list"
+# Pair id and title WITHIN one entry block. Two separate findalls would zip by
+# position across independent scans and mislabel every file if the orders differ.
+_EMBED_ENTRY = re.compile(
+    r'/file/d/([a-zA-Z0-9_-]{20,}).*?flip-entry-title[^>]*>([^<]+)<', re.S)
+_PAGE_ENTRY = re.compile(r'\["(1[a-zA-Z0-9_-]{10,})","([^"]+\.csv)"', re.IGNORECASE)
+
+
+def _list_folder(session, key: str, page_html: str) -> List[Tuple[str, str]]:
+    """Every (file_id, filename) in a public folder, from BOTH listings."""
+    found: dict = {}
+    try:
+        embed = session.get(_EMBED_URL.format(key=key), timeout=60).text
+        for fid, name in _EMBED_ENTRY.findall(embed):
+            name = name.strip()
+            if name.lower().endswith(".csv"):
+                found[fid] = name
+    except Exception as exc:                     # fall back, never fail the run
+        logger.warning("embeddedfolderview listing failed: %s", exc)
+
+    page = {fid: name for fid, name in _PAGE_ENTRY.findall(page_html)}
+    if not page:
+        ids = dict.fromkeys(re.findall(r'/file/d/(1[a-zA-Z0-9_-]{10,})', page_html)
+                            + re.findall(r'data-id="(1[a-zA-Z0-9_-]{10,})"', page_html))
+        page = {i: f"file_{i}.csv" for i in ids}
+    for fid, name in page.items():
+        found.setdefault(fid, name)
+
+    if len(found) > len(page) and page:
+        logger.info("folder page listed %d of %d files (it caps at ~50); "
+                    "embeddedfolderview supplied the rest", len(page), len(found))
+    return sorted(found.items(), key=lambda kv: kv[1])
+
+
 def load_csvs_from_drive(folder_key: str) -> Tuple[List[FileBytes], Optional[str]]:
     """Download every CSV from a public Drive folder. Returns (files, error)."""
     import requests
@@ -104,12 +148,7 @@ def load_csvs_from_drive(folder_key: str) -> Tuple[List[FileBytes], Optional[str
     except Exception as e:
         return [], f"Could not open the Drive folder: {e}"
 
-    entries = re.findall(r'\["(1[a-zA-Z0-9_-]{10,})","([^"]+\.csv)"', resp.text, re.IGNORECASE)
-    if not entries:
-        ids = list(dict.fromkeys(re.findall(r'/file/d/(1[a-zA-Z0-9_-]{10,})', resp.text)
-                                 + re.findall(r'data-id="(1[a-zA-Z0-9_-]{10,})"', resp.text)))
-        names = re.findall(r'(Stocks_Weekly[^"<>\s]*\.csv)', resp.text, re.IGNORECASE)
-        entries = list(zip(ids, names)) if names else [(i, f"file_{i}.csv") for i in ids]
+    entries = _list_folder(session, key, resp.text)
 
     seen, files, failed = set(), [], []
     for fid, fname in entries:

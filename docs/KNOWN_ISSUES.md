@@ -34,13 +34,40 @@ git add logs/waves_log.csv && git commit -m "log: week of <date>" && git push
 three commands. Equally automatic, but only fires when the PC is on — GitHub's
 runner does not care, which is why it remains the preferred host.
 
-## 2. Drive folder is 2 weeks behind the local archive (2026-08-23) · OPEN
+## 2. WITHDRAWN — Drive was never stalled; the LOADER was truncating (2026-08-23) · FIXED
 
-Drive Weekly ends **2026-08-02**; the local archive has **2026-08-16**. Two backups
-have not uploaded. Once the Action is live, Drive becomes the system's only data
-source, so a stalled backup means the job quietly freezes stale odds every week.
+**This issue was wrong.** It claimed the Drive Weekly folder had stopped receiving
+backups on 2026-08-02 and that two weeks were missing. Both statements were artifacts
+of a bug in `core/sources.py`.
 
-**To check:** the Apps Script execution log for `runWeeklyBackup` (Sunday 21:00 IST).
+`https://drive.google.com/drive/folders/<id>` embeds only the **first ~50 entries** in
+its HTML; the rest arrive by scroll, which a scraper never triggers. The folder held
+**53** files. The loader saw **50** — and because the listing is name-ordered, the
+three it dropped were the three NEWEST. The symptom was a folder that appeared to stop
+dead on 2026-08-02.
+
+There was no error, no warning, nothing to notice. Just a shorter list.
+
+**What this cost.** A confident diagnosis of a stalled Apps Script backup, an
+instruction to the owner to change their Google Script, and a claim in this file that
+"two backups have not uploaded". The owner said the files were there. They were right.
+
+**The fix:** `_list_folder` reads `embeddedfolderview` (plain HTML, no JS, complete
+listing) AND the folder page, and UNIONS them by file id, so neither blind spot can
+hide a week. Verified live: 53 CSVs, 2025-08-30 -> 2026-08-23. Pinned by
+`test_folder_listing_is_not_capped_by_the_50_item_page`.
+
+**What stands.** The `TARGET_FOLDERS` change in Script 2 is still worth keeping —
+`DriveApp.getFoldersByName()` really does search the whole Drive and really can return
+the wrong folder. It is now a robustness improvement rather than a bug fix. And the
+freshness guard (#4 below, `MAX_SNAPSHOT_AGE_DAYS`) stands on its own: a truncated
+listing is silent in exactly the way a stalled backup is, and this incident is the
+argument FOR the guard, not against it.
+
+**The lesson, which is the reason this entry was rewritten instead of deleted:** every
+number in a diagnosis is a measurement, and a measurement can have a bug. "The newest
+file is 2026-08-02" was never checked against the folder itself — it was taken from the
+tool under suspicion.
 
 ## 3. Sheet-side fixes worth doing (2026-08-23) · OPEN
 
@@ -91,7 +118,8 @@ would abort the script before it could read `$LASTEXITCODE` and report the real
 reason. Every failure is now checked explicitly.
 
 **Verified end to end 2026-08-23:** downloaded 50 CSVs from Drive, hit the
-freshness guard on the 21-day-old snapshot, reported it, exited 1, and committed
+freshness guard on what it believed was a 21-day-old snapshot (see #2 --
+the listing was truncated), reported it, exited 1, and committed
 nothing. The one path still unexercised is the success branch (commit + push),
 which needs a fresh snapshot to reach.
 
