@@ -274,3 +274,51 @@ def test_live_record_grades_the_v31_log_which_has_no_p_up(tmp_path):
     assert rec["n"] == 40
     assert rec["stated"] == pytest.approx(0.12)
     assert rec["actual"] == pytest.approx(0.5)
+
+
+# ── freshness: a forecast written after the fact is not a forecast ────────────
+
+def test_stale_snapshot_is_refused_and_names_the_cost():
+    """The exposure this closes: Drive's newest file was 21 days old while the
+    weekly job was one billing-unlock away from freezing it as this week's call.
+    Every stage downstream succeeds on stale input — scoring cannot tell."""
+    from core.config import MAX_SNAPSHOT_AGE_DAYS
+    from core.decide import StaleSnapshotError, assert_fresh
+
+    today = pd.Timestamp("2026-08-23")
+    assert assert_fresh(pd.Timestamp("2026-08-23"), today=today) == 0
+    assert assert_fresh(pd.Timestamp("2026-08-19"), today=today) == 4
+
+    with pytest.raises(StaleSnapshotError) as e:
+        assert_fresh(pd.Timestamp("2026-08-02"), today=today)      # the real stall
+    msg = str(e.value)
+    assert "21 days old" in msg
+    assert "75%" in msg, "must state how much of the label window is already spent"
+
+    # A whole missed week must NOT slip through: that is the failure being caught.
+    with pytest.raises(StaleSnapshotError):
+        assert_fresh(today - pd.Timedelta(days=7), today=today)
+    assert MAX_SNAPSHOT_AGE_DAYS < 7, "a 7-day limit would admit a fully stalled week"
+
+
+def test_every_log_writing_entry_point_checks_freshness():
+    """Static contract. `append_log` is a mechanical writer and cannot know the
+    date; the guard therefore lives at the entry points, so a THIRD entry point
+    added later must not be able to quietly skip it."""
+    import ast
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    checked = []
+    for sub, name in (("", "app.py"), ("core", "decide.py"), ("tools", "weekly_run.py"),
+                      ("tools", "backtest.py")):
+        path = os.path.join(root, sub, name)
+        if not os.path.exists(path):
+            continue
+        src = open(path, encoding="utf-8").read()
+        names = {n.id for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Name)}
+        if "append_log" not in names:
+            continue
+        checked.append(os.path.join(sub, name))
+        assert "assert_fresh" in names, (
+            f"{sub}/{name} writes the permanent log but never calls assert_fresh — "
+            "it can freeze a forecast for a window that already happened.")
+    assert checked, "no log-writing entry point found; the contract is not being tested"

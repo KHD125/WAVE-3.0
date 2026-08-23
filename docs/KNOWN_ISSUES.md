@@ -79,3 +79,25 @@ run end to end — the PowerShell tool returned no output on three attempts in t
 authoring session. **Run it manually once** and confirm it freezes a row and
 pushes, before registering it as a scheduled task. An unverified weekly job is
 worse than none: it looks like coverage and leaves permanent holes.
+
+## 6. The first logged row is 7 days stale, and predates the guard (2026-08-23) · DISCLOSED
+
+`waves_log.csv` row set 1 — snapshot **2026-08-16**, frozen **2026-08-23**. The
+freshness guard (`MAX_SNAPSHOT_AGE_DAYS = 5`) was written immediately afterwards and
+would REFUSE this row today; running `python -m core.decide` now exits 1 on it.
+
+It stays in the log. The log is append-only precisely so that rows cannot be dropped
+later for looking inconvenient, and dropping one on day one would set exactly the
+wrong precedent. What a February reader needs to know:
+
+- **No lookahead reached the model.** Every feature is computed from the 08-16 panel;
+  `score_panel` never sees a later bar.
+- **1 of the 4 label weeks had already elapsed** when the row was written, so a human
+  could in principle have known part of the outcome. Nobody looked, but the claim is
+  unfalsifiable — treat this row as weaker evidence than the ones that follow.
+- The gap is **auditable from the log itself**: `logged_at_utc` minus `snapshot_date`
+  is 7 days here and should be 0 for every honest row after it. Check that column
+  before grading.
+
+**Next clean freeze:** after the Sunday 21:00 IST backup lands, `python -m core.decide`
+sees age 0.

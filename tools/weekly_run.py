@@ -20,7 +20,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.decide import append_log, build_forecast_from_files          # noqa: E402
+from core.decide import (append_log, assert_fresh,                     # noqa: E402
+                         build_forecast_from_files)
 from core.config import DRIVE_FOLDER_WEEKLY, MODEL_VERSION, RANK_FEATURE   # noqa: E402
 from core.sources import load_csvs_from_drive, local_archive_files     # noqa: E402
 
@@ -50,7 +51,12 @@ def collect_files():
 
 def main() -> int:
     table, meta = build_forecast_from_files(collect_files())
-    print(f"\nWAVE {MODEL_VERSION} · snapshot {meta['latest']:%Y-%m-%d} · trained through "
+    # BEFORE anything is printed or written. When the upstream backup stalls,
+    # the newest file on Drive is weeks old and every step downstream still
+    # succeeds - the job would freeze a forecast for a window that has already
+    # mostly happened. Raises StaleSnapshotError, which exits 1 and is visible.
+    age = assert_fresh(meta["latest"])
+    print(f"\nWAVE {MODEL_VERSION} · snapshot {meta['latest']:%Y-%m-%d} ({age}d old) · trained through "
           f"{meta['trained_through']:%Y-%m-%d} · {meta['weeks']} weeks · {len(table)} names\n")
     # Columns come from LOG_COLUMNS-adjacent v3.1 fields. Never hardcode a column
     # list that core/decide.py also defines: this printed v3.0's p_up/p_dn/net_edge

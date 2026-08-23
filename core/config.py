@@ -35,6 +35,15 @@ WAVE_PCT = 15.0                      # a wave  = +15% over the label horizon
 CRASH_PCT = -15.0                    # a crash = −15% over the label horizon
 LABEL_HORIZON_WEEKS = 4
 
+# How old the newest snapshot may be before freezing it is no longer a FORECAST.
+# The weekly backup lands Sunday 21:00 IST and the job runs 23:00 IST, so a healthy
+# run sees an age of 0. A stalled backup pipeline shows up as 7+, and freezing a
+# week-old snapshot silently spends part of the label window before the forecast is
+# even written — at 21 days (the observed Drive stall) 75% of the outcome is already
+# determined, and the row is indistinguishable in the log from an honest one.
+# 5 admits a mid-week manual dispatch and refuses a whole missed week.
+MAX_SNAPSHOT_AGE_DAYS = 5
+
 # ── Universe screen (tradeability, not alpha: where winners are BUYABLE) ──────
 MIN_PRICE = 50.0                     # ₹ — below this, 1-rupee quantization dominates
 MIN_MARKET_CAP = 500 * CRORE         # the Small Cap floor

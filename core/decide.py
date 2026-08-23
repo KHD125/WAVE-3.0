@@ -20,8 +20,8 @@ from typing import Optional, Tuple
 
 import pandas as pd
 
-from .config import (MAX_PER_SECTOR, MODEL_VERSION, RANK_FEATURE, TOP_N,
-                     UNIVERSE_CATEGORIES)
+from .config import (LABEL_HORIZON_WEEKS, MAX_PER_SECTOR, MAX_SNAPSHOT_AGE_DAYS,
+                     MODEL_VERSION, RANK_FEATURE, TOP_N, UNIVERSE_CATEGORIES)
 from .counted import attach_counted_odds
 from .odds import _clean, _label
 from .scan import compute_features
@@ -102,6 +102,39 @@ def build_forecast() -> Tuple[pd.DataFrame, dict]:
     return _stamp(table, meta), meta
 
 
+class StaleSnapshotError(RuntimeError):
+    """The newest snapshot is too old to be forecast from. See assert_fresh."""
+
+
+def assert_fresh(snapshot, today=None, max_age_days: int = MAX_SNAPSHOT_AGE_DAYS) -> int:
+    """Refuse to freeze a forecast whose outcome has already started happening.
+
+    A forecast is only a forecast if it is written BEFORE the window it predicts.
+    Nothing in the pipeline enforced that: `score_panel` faithfully scores whatever
+    the newest snapshot happens to be, so when the upstream backup stalls, the job
+    keeps succeeding and freezes a weeks-old snapshot as this week's call. The
+    observed Drive stall was 21 days — 75% of a 28-day label window already elapsed,
+    and the row lands in the log indistinguishable from an honest one.
+
+    Fails LOUDLY rather than skipping. A stalled data pipeline needs a human; a
+    green run that froze nothing is the silent stop this whole design exists to
+    avoid. Returns the age in days so callers can report it.
+    """
+    snapshot = pd.Timestamp(snapshot).normalize()
+    today = pd.Timestamp(today).normalize() if today is not None else         pd.Timestamp(datetime.now(timezone.utc).date())
+    age = int((today - snapshot).days)
+    if age > max_age_days:
+        elapsed = age / (LABEL_HORIZON_WEEKS * 7)
+        raise StaleSnapshotError(
+            f"newest snapshot is {snapshot:%Y-%m-%d}, {age} days old (limit "
+            f"{max_age_days}). Freezing it would spend {elapsed:.0%} of the "
+            f"{LABEL_HORIZON_WEEKS}-week label window before the forecast is "
+            f"written — that is not a forecast. The upstream backup has almost "
+            f"certainly stalled: check that the weekly job uploaded, then re-run. "
+            f"Nothing was logged.")
+    return age
+
+
 def append_log(table: pd.DataFrame, path: Optional[str] = None) -> bool:
     """Append this snapshot's forecast. Returns False if it was already logged.
 
@@ -151,9 +184,11 @@ def append_log(table: pd.DataFrame, path: Optional[str] = None) -> bool:
 
 def main() -> None:
     table, meta = build_forecast()
+    age = assert_fresh(meta["latest"])          # never freeze a stale snapshot
     print(f"WAVE {MODEL_VERSION} · snapshot {meta['latest']:%Y-%m-%d} · trained through "
           f"{meta['trained_through']:%Y-%m-%d} · {' + '.join(UNIVERSE_CATEGORIES)} · "
-          f"top {len(table)} by range_pos (max {MAX_PER_SECTOR}/sector)")
+          f"top {len(table)} by range_pos (max {MAX_PER_SECTOR}/sector) · "
+          f"snapshot is {age}d old")
     print()
     view = table[["ticker", "sector", "price", RANK_FEATURE, "decile",
                   "hist_rate", "persist", "sector_heat"]].copy()
@@ -175,4 +210,12 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # A stale archive is an EXPECTED condition with an actionable message, not a
+    # crash. Print the message, skip the stack, exit non-zero so a wrapper script
+    # (tools/weekly.ps1) still sees the failure.
+    import sys
+    try:
+        main()
+    except StaleSnapshotError as exc:
+        print(f"REFUSED: {exc}", file=sys.stderr)
+        sys.exit(1)
