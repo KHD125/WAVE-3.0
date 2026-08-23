@@ -71,10 +71,18 @@ def render(ctx: dict, ticker: str) -> None:
         feats.append({"Feature": _PRETTY.get(f, f), "Percentile": pct,
                       "Raw": r.get(f"raw_{f[2:]}", r.get(f))})
     fd = pd.DataFrame(feats).sort_values("Percentile", ascending=False, na_position="last")
+    fd["Percentile"] = fd["Percentile"] * 100.0
+    # Native ProgressColumn, not Styler.background_gradient: the latter pulls in
+    # matplotlib, which is absent on a lean deploy and took the live app down.
     st.dataframe(
-        fd.style.format({"Percentile": "{:.0%}", "Raw": "{:,.2f}"})
-          .background_gradient(subset=["Percentile"], cmap="RdYlGn", vmin=0, vmax=1),
-        use_container_width=True, hide_index=True, height=min(35 * (len(fd) + 1), 520))
+        fd, use_container_width=True, hide_index=True,
+        height=min(35 * (len(fd) + 1), 520),
+        column_config={
+            "Percentile": st.column_config.ProgressColumn(
+                "Percentile", help="Rank against this week's investable universe",
+                format="%.0f%%", min_value=0, max_value=100),
+            "Raw": st.column_config.NumberColumn("Raw value", format="%.2f"),
+        })
 
     # ── Layer 3: evidence ─────────────────────────────────────────────────
     st.markdown("##### Trajectory")

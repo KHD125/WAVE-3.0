@@ -97,11 +97,11 @@ def render(ctx: dict) -> None:
                              "G − mid": a - b, "G − loser": a - c})
             prof = pd.DataFrame(rows).sort_values("G − mid", ascending=False)
             st.dataframe(
-                prof.style.format("{:.3f}", subset=["GAINER", "middle", "loser",
-                                                    "G − mid", "G − loser"])
-                    .background_gradient(subset=["G − loser"], cmap="RdYlGn"),
-                use_container_width=True, hide_index=True,
-                height=min(35 * (len(prof) + 1), 520))
+                prof, use_container_width=True, hide_index=True,
+                height=min(35 * (len(prof) + 1), 520),
+                column_config={c: st.column_config.NumberColumn(format="%.3f")
+                               for c in ("GAINER", "middle", "loser",
+                                         "G − mid", "G − loser")})
             st.caption("**Read the `G − loser` column, not `G − mid`.** A feature that "
                        "separates gainers from the *middle* but not from *losers* is a "
                        "volatility detector wearing a direction costume.")

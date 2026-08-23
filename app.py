@@ -38,13 +38,17 @@ st.set_page_config(page_title=f"WAVE {MODEL_VERSION}", page_icon="🌊", layout=
 
 # ── Pipeline (cached; the only place stages are chained in the app) ───────────
 
-@st.cache_data(show_spinner="Building the honest panel…", max_entries=2)
-def _panel(files):
-    return build_panel_from_files(files)
+@st.cache_data(show_spinner="Building the panel and scoring the newest week…",
+               max_entries=2)
+def _pipeline(files):
+    """files (bytes -> hashable) in, everything out.
 
-
-@st.cache_data(show_spinner="Scoring the newest snapshot…", max_entries=2)
-def _score(panel: pd.DataFrame):
+    ONE cached entry keyed on the raw file bytes. Splitting this into
+    _panel(files) -> _score(panel) meant handing a DataFrame to @st.cache_data,
+    which must hash its arguments — and a panel carrying non-picklable content
+    raises UnhashableParamError at runtime. Bytes always hash; DataFrames are a
+    coin flip. Caught by tests/test_ui_render.py, not by any static check."""
+    panel = build_panel_from_files(files)
     scored = _label(_clean(run_feature_pipeline(panel)))
     latest = scored["date"].max()
     train = scored[scored["y_up"].notna()]   # only resolved labels — leak-proof by construction
@@ -106,7 +110,7 @@ def main() -> None:
                    "(+15% in 4 weeks) and of a crash — judged by whether those odds come true.")
         return
 
-    table, meta, scored = _score(_panel(files))
+    table, meta, scored = _pipeline(files)
     ctx = {"table": table, "meta": meta, "scored": scored, "history": None}
 
     tabs = st.tabs(["📊 Summary", "🔍 Deep Scanner", "🔬 The Tear Sheet",

@@ -32,6 +32,8 @@ def render(ctx: dict) -> None:
                    breadth=("sector_breadth", "first"), p_wave=("p_up", "mean"),
                    p_crash=("p_dn", "mean"), edge=("net_edge", "mean"))
               .reset_index())
+    for c in ("p_wave", "p_crash", "edge"):
+        g[c] = g[c] * 100.0
     g = g[g["stocks"] >= 3].sort_values("heat", ascending=False)
 
     hot, cold = g.head(1), g.tail(1)
@@ -46,12 +48,22 @@ def render(ctx: dict) -> None:
     view = g.rename(columns={"sector": "Sector", "stocks": "Stocks", "heat": "Heat",
                              "breadth": "Breadth", "p_wave": "Avg P(wave)",
                              "p_crash": "Avg P(crash)", "edge": "Avg edge"})
+    view["Heat"] = view["Heat"] * 100.0
+    view["Breadth"] = view["Breadth"] * 100.0
     st.dataframe(
-        view.style.format({"Heat": "{:.2f}", "Breadth": "{:.0%}", "Avg P(wave)": "{:.1%}",
-                           "Avg P(crash)": "{:.1%}", "Avg edge": "{:+.1%}"})
-            .background_gradient(subset=["Heat"], cmap="RdYlGn")
-            .background_gradient(subset=["Breadth"], cmap="RdYlGn"),
-        use_container_width=True, hide_index=True, height=min(38 * (len(view) + 1), 620))
+        view, use_container_width=True, hide_index=True,
+        height=min(38 * (len(view) + 1), 620),
+        column_config={
+            "Heat": st.column_config.ProgressColumn(
+                "Heat", help="Sector's average position-in-52w-range percentile",
+                format="%.0f", min_value=0, max_value=100),
+            "Breadth": st.column_config.ProgressColumn(
+                "Breadth", help="Share of the sector in the top tercile",
+                format="%.0f%%", min_value=0, max_value=100),
+            "Avg P(wave)": st.column_config.NumberColumn(format="%.1f%%"),
+            "Avg P(crash)": st.column_config.NumberColumn(format="%.1f%%"),
+            "Avg edge": st.column_config.NumberColumn(format="%+.1f%%"),
+        })
 
     st.info(f"**Why the cap stays at {MAX_PER_SECTOR}.** Loosening it raised backtested alpha "
             "monotonically (2/sector +1.5%/yr → uncapped +11.7%/yr) — because it becomes a "
