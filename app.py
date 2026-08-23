@@ -25,7 +25,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
-from core.config import MAX_PER_SECTOR, MODEL_VERSION, TOP_N, UNIVERSE_CATEGORY  # noqa: E402
+from core.config import (MAX_PER_SECTOR, MODEL_VERSION, RANK_FEATURE,  # noqa: E402
+                         TOP_N, UNIVERSE_CATEGORIES)
 from core.decide import score_panel                                      # noqa: E402
 from core.track_record import summary as track_summary                   # noqa: E402
 from core.sources import (LOCAL_ARCHIVE, build_panel_from_files,      # noqa: E402
@@ -87,7 +88,8 @@ def _sidebar():
             st.session_state["files"] = files
             st.cache_data.clear()
         st.divider()
-        st.caption(f"{UNIVERSE_CATEGORY} · top {TOP_N} · max {MAX_PER_SECTOR}/sector · "
+        st.caption(f"{' + '.join(UNIVERSE_CATEGORIES)} · top {TOP_N} · "
+                   f"max {MAX_PER_SECTOR}/sector · "
                    "laws in **Reference**")
     return st.session_state.get("files")
 
@@ -114,9 +116,9 @@ def main() -> None:
     with tabs[2]:
         # app.py owns selection state; ui_tearsheet stays stateless by contract.
         week = scored[scored["date"] == meta["latest"]]
-        choices = week.sort_values("net_edge", ascending=False)["ticker"].dropna().tolist()
+        choices = week.sort_values(RANK_FEATURE, ascending=False)["ticker"].dropna().tolist()
         pick = st.selectbox("Stock", choices, key="ts_ticker",
-                            help="Ordered by net edge. Type to search.")
+                            help="Ordered by position in 52-week range. Type to search.")
         ui_tearsheet.render(ctx, pick)
     with tabs[3]:
         ui_pulse.render(ctx)

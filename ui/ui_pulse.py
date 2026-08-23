@@ -29,10 +29,10 @@ def render(ctx: dict) -> None:
 
     g = (week.groupby("sector")
               .agg(stocks=("ticker", "size"), heat=("sector_heat", "first"),
-                   breadth=("sector_breadth", "first"), p_wave=("p_up", "mean"),
-                   p_crash=("p_dn", "mean"), edge=("net_edge", "mean"))
+                   breadth=("sector_breadth", "first"),
+                   pos=("p_range_pos", "mean"), hist=("hist_rate", "mean"))
               .reset_index())
-    for c in ("p_wave", "p_crash", "edge"):
+    for c in ("pos", "hist"):
         g[c] = g[c] * 100.0
     g = g[g["stocks"] >= 3].sort_values("heat", ascending=False)
 
@@ -46,8 +46,8 @@ def render(ctx: dict) -> None:
     ])
 
     view = g.rename(columns={"sector": "Sector", "stocks": "Stocks", "heat": "Heat",
-                             "breadth": "Breadth", "p_wave": "Avg P(wave)",
-                             "p_crash": "Avg P(crash)", "edge": "Avg edge"})
+                             "breadth": "Breadth", "pos": "Avg range pos",
+                             "hist": "Avg hist wave rate"})
     view["Heat"] = view["Heat"] * 100.0
     view["Breadth"] = view["Breadth"] * 100.0
     st.dataframe(
@@ -60,9 +60,8 @@ def render(ctx: dict) -> None:
             "Breadth": st.column_config.ProgressColumn(
                 "Breadth", help="Share of the sector in the top tercile",
                 format="%.0f%%", min_value=0, max_value=100),
-            "Avg P(wave)": st.column_config.NumberColumn(format="%.1f%%"),
-            "Avg P(crash)": st.column_config.NumberColumn(format="%.1f%%"),
-            "Avg edge": st.column_config.NumberColumn(format="%+.1f%%"),
+            "Avg range pos": st.column_config.NumberColumn(format="%.0f"),
+            "Avg hist wave rate": st.column_config.NumberColumn(format="%.1f%%"),
         })
 
     st.info(f"**Why the cap stays at {MAX_PER_SECTOR}.** Loosening it raised backtested alpha "

@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from core.config import WAVE_PCT, LABEL_HORIZON_WEEKS
+from core.config import WAVE_PCT, LABEL_HORIZON_WEEKS, RANK_FEATURE
 from core.search import screen_hit_rate, search
 from ui.ui_components import download, prob_table, stat_strip
 
@@ -112,7 +112,7 @@ def render(ctx: dict) -> None:
             m &= frame["sector_heat"].fillna(2) <= max_heat
         return m
 
-    f = week[build_mask(week)].sort_values("net_edge", ascending=False)
+    f = week[build_mask(week)].sort_values(RANK_FEATURE, ascending=False)
 
     # ── the funnel ────────────────────────────────────────────────────────
     hist = screen_hit_rate(scored, build_mask(scored))
@@ -146,6 +146,6 @@ def render(ctx: dict) -> None:
         return
     prob_table(f.head(200), height=560)
     if len(f) > 200:
-        st.caption(f"Showing the top 200 of {len(f):,} by net edge. Download for the rest.")
+        st.caption(f"Showing the top 200 of {len(f):,} by range position. Download for the rest.")
     download(f, "⬇️ Download this screen",
              f"wave3_scan_{meta['latest']:%Y-%m-%d}.csv")

@@ -8,7 +8,7 @@ If you are editing this file outside a review window, you are the failure mode
 this system was built to prevent.
 """
 
-MODEL_VERSION = "3.0"
+MODEL_VERSION = "3.1"
 FIRST_REVIEW = "2027-02-21"          # 26 logged weeks after the first frozen forecast
 
 # ── Units ─────────────────────────────────────────────────────────────────────
@@ -29,9 +29,22 @@ EMBARGO_DAYS = 29                    # label horizon + 1 day — the no-leakage 
 MIN_TRAIN_WEEKS = 26
 
 # ── Portfolio (core/decide.py) ────────────────────────────────────────────────
-UNIVERSE_CATEGORY = "Mid Cap"        # ~92% of its top-100 winners are investable
+# Mid + Small, NOT "all". Unrestricted, Large+Mega take 13 of 30 slots (43%) and
+# drag the result from +15.18%/yr to +6.42%/yr — they rank high on range_pos because
+# they are LESS volatile (a steady grind sits at the 95th percentile of a narrow
+# range), which is a different event from a mid cap at the 95th of a wide one.
+# Measured weakest in three independent tests; the 37-year literature predicts it.
+UNIVERSE_CATEGORIES = ("Mid Cap", "Small Cap")
 TOP_N = 30
 MAX_PER_SECTOR = 3                   # THE SEATBELT — not tunable, whatever sector_heat says
 HOLD_WEEKS = 8
 TRAIL_STOP_PCT = 20.0                # tail insurance on DAILY closes (weekly lies by 22pp/yr)
 COST_BPS = 57.6                      # realistic Indian round trip (STT+brokerage+impact)
+
+# ── v3.1: rank by ONE measured column, odds COUNTED not fitted ────────────────
+# The 13-feature logistic scored 1.07x lift; range_pos alone scored 1.36x
+# (ledger #55). The model was subtracting performance, so it is demoted to the Lab.
+RANK_FEATURE = "p_range_pos"
+N_BINS = 10                          # deciles: ~4,500 rows/cell over the archive.
+                                     # Finer bins are noise; 3-feature conditioning
+                                     # would give ~45/cell.

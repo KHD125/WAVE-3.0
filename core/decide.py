@@ -20,8 +20,10 @@ from typing import Optional, Tuple
 
 import pandas as pd
 
-from .config import MAX_PER_SECTOR, MODEL_VERSION, TOP_N, UNIVERSE_CATEGORY
-from .odds import _clean, _label, fit_predict_one
+from .config import (MAX_PER_SECTOR, MODEL_VERSION, RANK_FEATURE, TOP_N,
+                     UNIVERSE_CATEGORIES)
+from .counted import attach_counted_odds
+from .odds import _clean, _label
 from .scan import compute_features
 from .track import compute_track
 
@@ -30,8 +32,9 @@ ARCHIVE = os.path.join(_ROOT, "Alpha Resources", "Weekly", "Stocks_Backups Weekl
 LOG = os.path.join(_ROOT, "logs", "waves_log.csv")
 
 LOG_COLUMNS = ["logged_at_utc", "model_version", "snapshot_date", "trained_through",
-               "ticker", "company_name", "sector", "price", "p_up", "p_dn",
-               "net_edge", "persist", "sector_heat", "p_range_pos"]
+               "ticker", "company_name", "sector", "category", "price",
+               "p_range_pos", "decile", "hist_rate", "hist_n",
+               "persist", "sector_heat", "from_high"]
 
 
 def score_panel(panel: pd.DataFrame) -> Tuple[pd.DataFrame, dict, pd.DataFrame]:
@@ -54,9 +57,10 @@ def score_panel(panel: pd.DataFrame) -> Tuple[pd.DataFrame, dict, pd.DataFrame]:
     if train.empty:
         raise ValueError("No resolved labels — need at least 4 weeks of history.")
 
-    week = fit_predict_one(train, d[d["date"] == latest])
-    table = week[week["category"] == UNIVERSE_CATEGORY].sort_values(
-        "net_edge", ascending=False, kind="mergesort")
+    # v3.1: rank by ONE measured column. No model, no fitted parameters.
+    week = attach_counted_odds(d[d["date"] == latest], train)
+    table = week[week["category"].isin(UNIVERSE_CATEGORIES)].sort_values(
+        RANK_FEATURE, ascending=False, kind="mergesort")
     table = table[table.groupby("sector").cumcount() < MAX_PER_SECTOR].head(TOP_N)
 
     meta = {
@@ -69,8 +73,8 @@ def score_panel(panel: pd.DataFrame) -> Tuple[pd.DataFrame, dict, pd.DataFrame]:
     }
     # Attach this week's probabilities back onto the full frame so the UI can
     # show odds beside every historical row without a second merge upstream.
-    scored = d.merge(week[["ticker", "date", "p_up", "p_dn", "net_edge"]],
-                     on=["ticker", "date"], how="left")
+    scored = d.merge(week[["ticker", "date", "decile", "hist_rate", "hist_lift",
+                           "hist_n", "hist_base"]], on=["ticker", "date"], how="left")
     return table, meta, scored
 
 
@@ -128,17 +132,17 @@ def append_log(table: pd.DataFrame, path: Optional[str] = None) -> bool:
 
 def main() -> None:
     table, meta = build_forecast()
-    print(f"WAVE 3.0 · snapshot {meta['latest']:%Y-%m-%d} · trained through "
-          f"{meta['trained_through']:%Y-%m-%d} · {UNIVERSE_CATEGORY} · "
-          f"top {len(table)} by net edge (max {MAX_PER_SECTOR}/sector)")
+    print(f"WAVE {MODEL_VERSION} · snapshot {meta['latest']:%Y-%m-%d} · trained through "
+          f"{meta['trained_through']:%Y-%m-%d} · {' + '.join(UNIVERSE_CATEGORIES)} · "
+          f"top {len(table)} by range_pos (max {MAX_PER_SECTOR}/sector)")
     print()
-    view = table[["ticker", "sector", "price", "p_up", "p_dn", "net_edge",
-                  "persist", "sector_heat"]].copy()
-    for c in ("p_up", "p_dn", "net_edge"):
-        view[c] = (view[c] * 100).round(1)
+    view = table[["ticker", "sector", "price", RANK_FEATURE, "decile",
+                  "hist_rate", "persist", "sector_heat"]].copy()
+    view[RANK_FEATURE] = (view[RANK_FEATURE] * 100).round(0)
+    view["hist_rate"] = (view["hist_rate"] * 100).round(1)
     view["sector_heat"] = view["sector_heat"].round(2)
-    view.columns = ["ticker", "sector", "price", "P(wave)%", "P(crash)%",
-                    "edge_pp", "persist_w", "sect_heat"]
+    view.columns = ["ticker", "sector", "price", "range_pos_pct", "decile",
+                    "hist_wave%", "persist_w", "sect_heat"]
     print(view.to_string(index=False))
     # Report what actually happened. Printing "frozen" unconditionally would
     # announce success for a write that was refused — the precise failure mode

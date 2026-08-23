@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from core.config import CRASH_PCT, LABEL_HORIZON_WEEKS, WAVE_PCT
+from core.config import LABEL_HORIZON_WEEKS, RANK_FEATURE, WAVE_PCT
 from core.odds import MODEL_FEATURES
 from ui.ui_components import stat_strip
 
@@ -45,17 +45,24 @@ def render(ctx: dict, ticker: str) -> None:
     # ── Layer 1: the verdict ──────────────────────────────────────────────
     st.subheader(f"{r['ticker']} — {r.get('company_name', '')}")
     st.caption(f"{r.get('sector', '—')} · {r.get('category', '—')} · ₹{r['price']:,.0f}")
-    edge = r["net_edge"]
+    rate, n, lift = r.get("hist_rate"), r.get("hist_n"), r.get("hist_lift")
     stat_strip([
-        (f"P(wave ≥ +{WAVE_PCT:.0f}%)", f"{r['p_up']:.1%}",
-         f"next {LABEL_HORIZON_WEEKS} weeks · base {meta['base_up']:.1%}", "good"),
-        (f"P(crash ≤ {CRASH_PCT:.0f}%)", f"{r['p_dn']:.1%}",
-         f"base {meta['base_dn']:.1%}", "bad"),
-        ("Net edge", f"{edge:+.1%}", "P(wave) − P(crash)",
-         "good" if edge > 0 else "bad"),
+        ("Position in 52w range", f"{r[RANK_FEATURE]*100:.0f}th",
+         "percentile vs this week's universe",
+         "good" if r[RANK_FEATURE] > 0.8 else ""),
+        ("Historical wave rate", f"{rate:.1%}" if pd.notna(rate) else "—",
+         (f"decile {int(r['decile'])} · n={int(n):,} · base {meta['base_up']:.1%}"
+          if pd.notna(rate) else "not enough history"),
+         "good" if pd.notna(lift) and lift > 1.2 else ""),
         ("Persistence", f"{int(r['persist'])} wk",
          "consecutive weeks in the top tercile", ""),
+        ("Sector heat", f"{r['sector_heat']:.2f}",
+         "sector's average range position", ""),
     ])
+    st.caption(f"**That wave rate is a COUNT, not a forecast** — of every past "
+               f"stock-week in this decile, that share rose ≥{WAVE_PCT:.0f}% over the "
+               f"next {LABEL_HORIZON_WEEKS} weeks. It says what stocks like this one "
+               f"did before. It makes no claim about this one.")
 
     # ── Layer 2: why ──────────────────────────────────────────────────────
     st.markdown("##### Why these odds")

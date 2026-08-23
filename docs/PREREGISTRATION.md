@@ -41,3 +41,45 @@ amendments happen only at review windows, as dated addenda below the line.**
 
 Sunday: `python -m alpha.weekly` → read → log freezes itself. Nothing else. Tuesday
 doubts go in a notebook, not in the code. Signed into git so the jury can't be bribed.
+
+---
+
+## ADDENDUM — v3.1, dated 2026-08-23
+
+**Amended before any v3.1 forecast was frozen.** v3.0 rows already in
+`logs/waves_log.csv` are untouched and remain gradeable; `model_version` separates
+the two, so February judges each on its own terms. The experiment forks, it does
+not restart.
+
+### What changed and on what evidence
+
+| | v3.0 | v3.1 | evidence |
+|---|---|---|---|
+| Ranker | `net_edge` (13-feature logistic) | **`range_pos`** | ledger #55: 1.07× vs **1.36×** |
+| Odds | fitted P(wave) | **counted decile rate** | #55 + the v3.0 calibration failure (+16pp) |
+| Universe | Mid Cap (~298/wk) | **Mid + Small (~697/wk)** | ledger #57 |
+| Fitted parameters | ~14 | **0** | — |
+
+### Revised predictions of record
+
+1. Top-decile lift **1.15–1.35×** base out of sample. (In-archive it is 1.24×;
+   expect decay, not growth.)
+2. The decile curve stays **U-shaped**: both extremes above the trough, trough in
+   deciles 4–6. A clean ramp would be the surprise, not the goal.
+3. Traded after costs: **≈ +2%/yr** over the equal-weight universe.
+   A logged result ≥ +15%/yr means **leakage until proven otherwise**.
+4. Large+Mega remain the weakest segment; if a future window reverses this, it is
+   a review-window question, not a mid-flight change.
+5. Statistical proof will NOT arrive. February judges **process honesty and log
+   integrity**, not alpha.
+
+### Revised kill criteria
+
+- Top-decile lift < **1.10×** over 26 logged weeks → `range_pos` demoted, system
+  reverts to descriptive-only with no ranking claim.
+  *(Changed from "non-monotone" — ledger #58 shows the true shape is a U, and the
+  old criterion would have killed the factor for behaving as theory predicts.)*
+- Top-30 trails the universe by >5% over any 26 logged weeks → paused, autopsy.
+- Any leakage → version retired permanently, log annotated, never reused.
+
+**v3.1 is the last change before 2027-02-21.** Anything further waits for the window.

@@ -54,16 +54,32 @@ def experimental_banner() -> None:
 
 def prob_table(df: pd.DataFrame, height: int | None = None) -> None:
     """The canonical forecast table rendering — one definition, used by every tab."""
+    # v3.1: every column is a FACT. `hist_rate` is a counted frequency over the
+    # archive, not a fitted probability — see core/counted.py.
     cols = {"ticker": "Ticker", "company_name": "Company", "sector": "Sector",
-            "price": "Price ₹", "p_up": "P(wave)", "p_dn": "P(crash)",
-            "net_edge": "Net edge", "persist": "Persist w", "sector_heat": "Sector heat"}
+            "price": "Price ₹", "p_range_pos": "Range pos", "decile": "Decile",
+            "hist_rate": "Hist wave rate", "persist": "Persist w",
+            "sector_heat": "Sector heat", "from_high": "From high %"}
     view = df[[c for c in cols if c in df.columns]].rename(columns=cols)
+    if "Range pos" in view:
+        view["Range pos"] = view["Range pos"] * 100.0
     st.dataframe(
-        view.style.format({"Price ₹": "{:,.0f}", "P(wave)": "{:.1%}", "P(crash)": "{:.1%}",
-                           "Net edge": "{:+.1%}", "Sector heat": "{:.2f}"}),
-        use_container_width=True, hide_index=True,
+        view, use_container_width=True, hide_index=True,
         height=height or min(38 * (len(view) + 1) + 3, 720),
-    )
+        column_config={
+            "Price ₹": st.column_config.NumberColumn(format="%.0f"),
+            "Range pos": st.column_config.ProgressColumn(
+                "Range pos", help="Percentile position within its own 52-week range",
+                format="%.0f", min_value=0, max_value=100),
+            "Decile": st.column_config.NumberColumn(format="%.0f"),
+            "Hist wave rate": st.column_config.NumberColumn(
+                "Hist wave rate",
+                help="Of all past stock-weeks in this decile, how many rose >=15% "
+                     "in 4 weeks. A COUNT of your data, not a forecast.",
+                format="%.1f%%"),
+            "Sector heat": st.column_config.NumberColumn(format="%.2f"),
+            "From high %": st.column_config.NumberColumn(format="%.1f"),
+        })
 
 
 def download(df: pd.DataFrame, label: str, filename: str) -> None:

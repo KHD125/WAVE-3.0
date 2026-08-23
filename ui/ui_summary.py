@@ -12,7 +12,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from core.config import LABEL_HORIZON_WEEKS, UNIVERSE_CATEGORY, WAVE_PCT
+from core.config import LABEL_HORIZON_WEEKS, UNIVERSE_CATEGORIES, WAVE_PCT
 from ui.ui_components import download, experimental_banner, prob_table, stat_strip
 
 
@@ -65,15 +65,15 @@ def render(ctx: dict) -> None:
         ("Trained through", f"{meta['trained_through']:%d %b}", f"{meta['weeks']} weeks", ""),
         (f"Base P(wave ≥{WAVE_PCT:.0f}%/{LABEL_HORIZON_WEEKS}w)", f"{base:.1%}",
          "the universe's own hit rate", ""),
-        ("Investable universe", f"{inuni:,}", f"{UNIVERSE_CATEGORY} + screen", ""),
+        ("Investable universe", f"{inuni:,}", "Mid + Small + screen", ""),
     ]
     if report is not None:
         strip.append(("Data health", f"{report.delistings} delisted",
                       f"{report.corporate_actions} corp-actions quarantined", ""))
     stat_strip(strip)
 
-    st.subheader("Top 10 by net edge")
-    st.caption("Net edge = P(wave) − P(crash). The full, filterable list lives in "
+    st.subheader("Top 10 by position in 52-week range")
+    st.caption("Ranked on the one factor that survived measurement. The full, filterable list lives in "
                "**Deep Scanner**; one stock in depth lives in **The Tear Sheet**.")
     prob_table(table.head(10))
     download(table, "⬇️ Download the full top-30",
