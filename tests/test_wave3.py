@@ -119,8 +119,16 @@ def test_append_log_never_truncates(tmp_path, monkeypatch):
         "p_up": 0.2, "p_dn": 0.05, "net_edge": 0.15,
         "persist": 3, "sector_heat": 0.6, "p_range_pos": 0.9,
     }])
-    weekly.append_log(row)
-    weekly.append_log(row.assign(ticker="BBB"))
+    # A NEW snapshot extends the log — never rewrites it.
+    assert weekly.append_log(row) is True
+    later = row.assign(ticker="BBB", snapshot_date=pd.Timestamp("2026-08-23"))
+    assert weekly.append_log(later) is True
     back = pd.read_csv(weekly.LOG)
     assert len(back) == 2 and set(back["ticker"]) == {"AAA", "BBB"}, \
         "a second append must extend the log, never rewrite it"
+
+    # The SAME snapshot is refused, not duplicated. A retried CI run or a manual
+    # re-dispatch would otherwise double-count the sample the verdict is
+    # computed from — inflating the evidence without adding any.
+    assert weekly.append_log(row.assign(ticker="CCC")) is False
+    assert len(pd.read_csv(weekly.LOG)) == 2, "a re-run must not grow the log"

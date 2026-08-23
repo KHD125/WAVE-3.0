@@ -49,8 +49,12 @@ def main() -> int:
     for c in ("p_up", "p_dn", "net_edge"):
         view[c] = (view[c] * 100).round(1)
     print(view.to_string(index=False))
-    append_log(table)
-    print(f"\nfrozen to logs/waves_log.csv — {len(table)} rows appended")
+    if append_log(table):
+        print(f"\nfrozen to logs/waves_log.csv — {len(table)} rows appended")
+    else:
+        print(f"\nsnapshot {meta['latest']:%Y-%m-%d} already logged — nothing appended. "
+              "A retried or manually re-dispatched run must not double-count the "
+              "sample the verdict is computed from.")
     return 0
 
 

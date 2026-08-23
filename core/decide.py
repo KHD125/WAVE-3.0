@@ -1,12 +1,12 @@
 """
-alpha.weekly — Stage 4 of WAVE 3.0 (see alpha/PLAN.md §4): the Sunday table.
+core.decide — Stage 4 of WAVE 3.0 (see docs/PLAN.md §4): the Sunday table.
 
-    python -m alpha.core.decide
+    python -m core.decide          # local archive
+    python -m tools.weekly_run     # CI / Drive folder, then commits the log
 
-Rebuilds the panel from the archive, trains on every week whose 4-week label is
-already realized (so the live model never touches an unfinished outcome), scores
-the NEWEST snapshot, prints the Mid Cap top-30 by net edge, and appends the full
-table to logs/waves_log.csv.
+Trains on every week whose 4-week label is already realized (so the live model
+never touches an unfinished outcome), scores the NEWEST snapshot, and appends the
+top-N table to logs/waves_log.csv.
 
 THE LOG IS THE EXPERIMENT (Law 9). Rows are appended, timestamped, and never
 edited — in six months the frozen forecasts face reality with no room to narrate.
@@ -16,13 +16,12 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
+from typing import Optional, Tuple
 
-import numpy as np
 import pandas as pd
 
-from .config import (MAX_PER_SECTOR, MODEL_VERSION, TOP_N, UNIVERSE_CATEGORY)
-from .odds import MODEL_FEATURES, _clean, _label, fit_predict_one
-from .panel import build_panel
+from .config import MAX_PER_SECTOR, MODEL_VERSION, TOP_N, UNIVERSE_CATEGORY
+from .odds import _clean, _label, fit_predict_one
 from .scan import compute_features
 from .track import compute_track
 
@@ -30,57 +29,126 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ARCHIVE = os.path.join(_ROOT, "Alpha Resources", "Weekly", "Stocks_Backups Weekly")
 LOG = os.path.join(_ROOT, "logs", "waves_log.csv")
 
+LOG_COLUMNS = ["logged_at_utc", "model_version", "snapshot_date", "trained_through",
+               "ticker", "company_name", "sector", "price", "p_up", "p_dn",
+               "net_edge", "persist", "sector_heat", "p_range_pos"]
 
-def build_forecast() -> pd.DataFrame:
-    panel, report = build_panel(ARCHIVE, horizons_weeks=(4,))
-    panel = compute_track(compute_features(panel))
-    d = _label(_clean(panel))
 
+def score_panel(panel: pd.DataFrame) -> Tuple[pd.DataFrame, dict, pd.DataFrame]:
+    """Panel in -> (top-N table, meta, full scored frame). The single scoring path.
+
+    app.py, core.decide and tools.weekly_run ALL route through this, so a change
+    to selection can never apply to one surface and not another — the failure
+    that let Wave Detection's ranking mean something different in each tab.
+
+    Returns the FULL scored frame as well, so callers never recompute the feature
+    pipeline to get it (app.py did, doubling the work on every cache miss).
+    """
+    d = _label(_clean(compute_track(compute_features(panel))))
+    if d.empty:
+        raise ValueError("No investable rows after screening — check the snapshots.")
     latest = d["date"].max()
-    week = d[d["date"] == latest]
-    # Train ONLY where the 4-week outcome is fully known — automatic no-leakage:
-    # labels stop existing 4 weeks before `latest`, so the embargo is structural.
+    # Train ONLY where the 4-week outcome is fully known. Labels stop existing
+    # 4 weeks before `latest`, so the embargo is structural, not a parameter.
     train = d[d["y_up"].notna()]
-    scored = fit_predict_one(train, week)
+    if train.empty:
+        raise ValueError("No resolved labels — need at least 4 weeks of history.")
 
-    scored = scored[scored["category"] == UNIVERSE_CATEGORY]
-    scored = scored.sort_values("net_edge", ascending=False, kind="mergesort")
-    scored = scored[scored.groupby("sector").cumcount() < MAX_PER_SECTOR].head(TOP_N)
-    scored["snapshot_date"] = latest
-    scored["trained_through"] = train["date"].max()
-    scored["model_version"] = MODEL_VERSION
-    scored["logged_at_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    return scored
+    week = fit_predict_one(train, d[d["date"] == latest])
+    table = week[week["category"] == UNIVERSE_CATEGORY].sort_values(
+        "net_edge", ascending=False, kind="mergesort")
+    table = table[table.groupby("sector").cumcount() < MAX_PER_SECTOR].head(TOP_N)
+
+    meta = {
+        "latest": latest,
+        "trained_through": train["date"].max(),
+        "weeks": int(train["date"].nunique()),
+        "base_up": float(train["y_up"].mean()),
+        "base_dn": float(train["y_dn"].mean()),
+        "universe": int(len(week)),
+    }
+    # Attach this week's probabilities back onto the full frame so the UI can
+    # show odds beside every historical row without a second merge upstream.
+    scored = d.merge(week[["ticker", "date", "p_up", "p_dn", "net_edge"]],
+                     on=["ticker", "date"], how="left")
+    return table, meta, scored
 
 
-def append_log(table: pd.DataFrame) -> None:
-    cols = ["logged_at_utc", "model_version", "snapshot_date", "trained_through",
-            "ticker", "sector", "price", "p_up", "p_dn", "net_edge", "persist",
-            "sector_heat", "p_range_pos"]
-    row = table[cols].copy()
-    header = not os.path.exists(LOG)
-    row.to_csv(LOG, mode="a", header=header, index=False)   # append-only, never rewrite
+def _stamp(table: pd.DataFrame, meta: dict) -> pd.DataFrame:
+    out = table.copy()
+    out["snapshot_date"] = meta["latest"]
+    out["trained_through"] = meta["trained_through"]
+    out["model_version"] = MODEL_VERSION
+    out["logged_at_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return out
+
+
+def build_forecast_from_files(files) -> Tuple[pd.DataFrame, dict]:
+    """(filename, bytes) -> stamped top-N table + meta. Used by CI and the Drive path."""
+    from .sources import build_panel_from_files
+    table, meta, _scored = score_panel(build_panel_from_files(files))
+    return _stamp(table, meta), meta
+
+
+def build_forecast() -> Tuple[pd.DataFrame, dict]:
+    """Same, from the on-disk archive."""
+    from .panel import build_panel
+    panel, _report = build_panel(ARCHIVE, horizons_weeks=(4,))
+    table, meta, _scored = score_panel(panel)
+    return _stamp(table, meta), meta
+
+
+def append_log(table: pd.DataFrame, path: Optional[str] = None) -> bool:
+    """Append this snapshot's forecast. Returns False if it was already logged.
+
+    Append-only: existing rows are NEVER rewritten — a corrected log is not a log.
+    But a snapshot already present is REFUSED rather than duplicated. A weekly job
+    that gets re-run (a retry, a manual dispatch, a redeploy) would otherwise
+    double-count the same forecast and quietly inflate the sample the February
+    verdict is computed from.
+
+    `path=None` resolves the module-level LOG at CALL time, deliberately. Writing
+    `path: str = LOG` binds the default at DEFINITION time, so a test that
+    monkeypatches decide.LOG still writes to the real log — which is exactly what
+    happened, and it corrupted the frozen experiment record until git restored it.
+    A test must never be able to reach production data.
+    """
+    path = path or LOG
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    snapshot = pd.to_datetime(table["snapshot_date"].iloc[0])
+    if os.path.exists(path):
+        existing = pd.read_csv(path, usecols=["snapshot_date"])
+        already = pd.to_datetime(existing["snapshot_date"], errors="coerce")
+        if (already == snapshot).any():
+            return False
+    table.reindex(columns=LOG_COLUMNS).to_csv(
+        path, mode="a", header=not os.path.exists(path), index=False)
+    return True
 
 
 def main() -> None:
-    t = build_forecast()
-    latest = t["snapshot_date"].iloc[0]
-    print(f"WAVE 3.0 · snapshot {latest:%Y-%m-%d} · trained through "
-          f"{t['trained_through'].iloc[0]:%Y-%m-%d} · {UNIVERSE_CATEGORY} · "
-          f"top {len(t)} by net edge (max {MAX_PER_SECTOR}/sector)")
+    table, meta = build_forecast()
+    print(f"WAVE 3.0 · snapshot {meta['latest']:%Y-%m-%d} · trained through "
+          f"{meta['trained_through']:%Y-%m-%d} · {UNIVERSE_CATEGORY} · "
+          f"top {len(table)} by net edge (max {MAX_PER_SECTOR}/sector)")
     print()
-    view = t[["ticker", "sector", "price", "p_up", "p_dn", "net_edge",
-              "persist", "sector_heat"]].copy()
-    view["p_up"] = (view["p_up"] * 100).round(1)
-    view["p_dn"] = (view["p_dn"] * 100).round(1)
-    view["net_edge"] = (view["net_edge"] * 100).round(1)
+    view = table[["ticker", "sector", "price", "p_up", "p_dn", "net_edge",
+                  "persist", "sector_heat"]].copy()
+    for c in ("p_up", "p_dn", "net_edge"):
+        view[c] = (view[c] * 100).round(1)
     view["sector_heat"] = view["sector_heat"].round(2)
     view.columns = ["ticker", "sector", "price", "P(wave)%", "P(crash)%",
                     "edge_pp", "persist_w", "sect_heat"]
     print(view.to_string(index=False))
-    append_log(t)
-    print()
-    print(f"frozen to {LOG} — the log is the experiment; it is never edited.")
+    # Report what actually happened. Printing "frozen" unconditionally would
+    # announce success for a write that was refused — the precise failure mode
+    # this whole project exists to eliminate.
+    if append_log(table):
+        print(f"\nfrozen to {LOG} — the log is the experiment; it is never edited.")
+    else:
+        print(f"\nsnapshot {meta['latest']:%Y-%m-%d} is ALREADY logged — nothing "
+              "appended. A re-run must not double-count the sample the verdict "
+              "is computed from.")
 
 
 if __name__ == "__main__":

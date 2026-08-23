@@ -1,0 +1,52 @@
+# WAVE 3.0 — the Sunday freeze.
+#
+# Runs itself so the experiment does not depend on anyone remembering. Fetches
+# the newest snapshots, scores them, and commits the forecast to logs/waves_log.csv
+# BEFORE the outcome exists. GitHub timestamps it; the log is append-only.
+#
+# Setup (once): repo Settings -> Secrets and variables -> Actions -> Variables
+#   WAVE_DRIVE_FOLDER = <public Drive folder link or key>
+# Without it the job fails loudly rather than silently logging nothing.
+
+name: weekly forecast
+
+on:
+  schedule:
+    # 17:30 UTC Sunday = 11:00 PM IST — after the 9 PM IST backup lands.
+    - cron: "30 17 * * 0"
+  workflow_dispatch:        # manual run, for testing before the first Sunday
+
+permissions:
+  contents: write           # only to append the log
+
+jobs:
+  forecast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Run the forecast and freeze it
+        env:
+          WAVE_DRIVE_FOLDER: ${{ vars.WAVE_DRIVE_FOLDER }}
+        run: python -m tools.weekly_run
+
+      - name: Commit the frozen forecast
+        run: |
+          git config user.name  "wave-bot"
+          git config user.email "actions@github.com"
+          git add logs/waves_log.csv
+          # Nothing to commit is a legitimate outcome (re-run on the same
+          # snapshot). Do not fail the job for it, but do say so.
+          if git diff --cached --quiet; then
+            echo "no new forecast rows — log unchanged"
+          else
+            git commit -m "log: forecast frozen $(date -u +%Y-%m-%d)"
+            git push
+          fi

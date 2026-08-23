@@ -25,20 +25,34 @@ def render(ctx: dict) -> None:
                "resolved. This is the only number that decides whether the odds below "
                "are worth reading.")
     hist = ctx.get("history")
-    if hist is None or hist.empty:
-        stat_strip([("Graded forecasts", "—", "needs 26+ training weeks", "warn")])
-        st.info("No graded history yet. The Backtest tab's **Calibration audit** runs "
-                "the full walk-forward on demand.")
+    if not hist:
+        stat_strip([("Graded forecasts", "—", "none have aged past 4 weeks yet", "warn")])
+        st.info("No graded forecasts yet. Every Sunday run freezes one to "
+                "`logs/waves_log.csv`; four weeks later it can be marked hit or miss. "
+                "Until then the **Backtest → Calibration audit** tab runs the "
+                "walk-forward on demand.")
     else:
-        stated, actual = hist["stated"], hist["actual"]
-        gap = (actual - stated) * 100
+        gap = hist["gap_pp"]
         tone = "good" if abs(gap) <= 5 else ("warn" if abs(gap) <= 10 else "bad")
+        live = hist["source"] == "live log"
         stat_strip([
-            ("Model said", f"{stated:.1%}", f"avg over {hist['weeks']} weeks", ""),
-            ("Reality delivered", f"{actual:.1%}", "same weeks", ""),
+            ("Model said", f"{hist['stated']:.1%}",
+             f"{hist['n']:,} forecasts over {hist['weeks']} weeks", ""),
+            ("Reality delivered", f"{hist['actual']:.1%}", "same forecasts", ""),
             ("Calibration gap", f"{gap:+.1f}pp", "honest bar: ±5pp", tone),
-            ("Top-decile lift", f"{hist['lift']:.2f}×", "vs base rate", ""),
+            ("Lift vs base", f"{hist['lift']:.2f}×", f"base {hist['base']:.1%}", ""),
         ])
+        # WHICH evidence this is must never be ambiguous. Substituting a backtest
+        # for a live record is precisely the move this project exists to prevent.
+        if live:
+            st.success(f"**Live record** — {hist['n']:,} forecasts frozen to the log "
+                       "*before* their outcomes existed. This is evidence.", icon="🔒")
+        else:
+            pending = hist.get("pending", 0)
+            st.warning(f"**Backtest, not a live record.** Computed with today's code over "
+                       f"past data, so it is weaker evidence than a frozen forecast. "
+                       f"{pending} logged forecast(s) still in flight — the live record "
+                       "starts once they age past 4 weeks.", icon="⚠️")
 
     experimental_banner()
     st.divider()

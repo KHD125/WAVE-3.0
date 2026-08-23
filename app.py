@@ -25,9 +25,9 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
-from core import run_feature_pipeline                                    # noqa: E402
 from core.config import MAX_PER_SECTOR, MODEL_VERSION, TOP_N, UNIVERSE_CATEGORY  # noqa: E402
-from core.odds import _clean, _label, fit_predict_one                    # noqa: E402
+from core.decide import score_panel                                      # noqa: E402
+from core.track_record import summary as track_summary                   # noqa: E402
 from core.sources import (LOCAL_ARCHIVE, build_panel_from_files,      # noqa: E402
                           load_csvs_from_drive, local_archive_files)
 from ui import (ui_backtest, ui_components, ui_pulse, ui_reference,      # noqa: E402
@@ -43,25 +43,17 @@ st.set_page_config(page_title=f"WAVE {MODEL_VERSION}", page_icon="🌊", layout=
 def _pipeline(files):
     """files (bytes -> hashable) in, everything out.
 
-    ONE cached entry keyed on the raw file bytes. Splitting this into
-    _panel(files) -> _score(panel) meant handing a DataFrame to @st.cache_data,
-    which must hash its arguments — and a panel carrying non-picklable content
-    raises UnhashableParamError at runtime. Bytes always hash; DataFrames are a
-    coin flip. Caught by tests/test_ui_render.py, not by any static check."""
+    ONE cached entry keyed on the raw file bytes. Handing a DataFrame to
+    @st.cache_data means it must hash one, and a panel carrying non-picklable
+    content raises UnhashableParamError at runtime. Bytes always hash.
+
+    Selection routes through core.decide.score_panel — the SAME function the CLI
+    and CI use — so the app can never rank differently from the frozen log."""
     panel = build_panel_from_files(files)
-    scored = _label(_clean(run_feature_pipeline(panel)))
-    latest = scored["date"].max()
-    train = scored[scored["y_up"].notna()]   # only resolved labels — leak-proof by construction
-    week = fit_predict_one(train, scored[scored["date"] == latest])
-    scored = scored.merge(week[["ticker", "date", "p_up", "p_dn", "net_edge"]],
-                          on=["ticker", "date"], how="left")
-    table = week[week["category"] == UNIVERSE_CATEGORY].sort_values(
-        "net_edge", ascending=False, kind="mergesort")
-    table = table[table.groupby("sector").cumcount() < MAX_PER_SECTOR].head(TOP_N)
-    meta = dict(latest=latest, trained_through=train["date"].max(),
-                weeks=int(train["date"].nunique()),
-                base_up=float(train["y_up"].mean()), base_dn=float(train["y_dn"].mean()))
-    return table, meta, scored
+    table, meta, scored = score_panel(panel)
+    # The live track record: frozen forecasts vs what actually happened.
+    history = track_summary(panel)
+    return table, meta, scored, history
 
 
 # ── Sidebar: data source ─────────────────────────────────────────────────────
@@ -110,8 +102,8 @@ def main() -> None:
                    "(+15% in 4 weeks) and of a crash — judged by whether those odds come true.")
         return
 
-    table, meta, scored = _pipeline(files)
-    ctx = {"table": table, "meta": meta, "scored": scored, "history": None}
+    table, meta, scored, history = _pipeline(files)
+    ctx = {"table": table, "meta": meta, "scored": scored, "history": history}
 
     tabs = st.tabs(["📊 Summary", "🔍 Deep Scanner", "🔬 The Tear Sheet",
                     "🌊 Pulse", "🧪 Backtest", "📖 Reference"])
