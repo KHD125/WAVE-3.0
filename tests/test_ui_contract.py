@@ -102,3 +102,37 @@ def test_locked_parameters_live_only_in_config():
     for literal in ("= 30", "= 3 ", '= "Mid Cap"'):
         assert literal not in src, (
             f"decide.py hardcodes {literal!r} — import it from core.config instead")
+
+
+def test_powershell_fallback_is_ascii_and_parses():
+    """tools/weekly.ps1 did not PARSE, and nothing noticed.
+
+    Windows PowerShell 5.1 reads a .ps1 as ANSI unless the file has a UTF-8 BOM.
+    The script held em-dashes; under cp1252 the 0x94 byte decodes to a right
+    double quote, which PowerShell honours as a string delimiter -- strings closed
+    early, braces went unbalanced, the file failed to parse. As a scheduled task it
+    would have done nothing every Sunday, silently, which is worse than no fallback
+    at all because it looks like coverage.
+
+    ASCII-only makes the encoding irrelevant. This test is the only thing standing
+    between the script and the next well-meant em-dash.
+    """
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, "tools", "weekly.ps1")
+    assert os.path.exists(path), "the Task Scheduler fallback is missing"
+    raw = open(path, "rb").read()
+
+    offenders = [(i + 1, line.decode("utf-8", "replace"))
+                 for i, line in enumerate(raw.split(b"\n"))
+                 if any(b > 127 for b in line)]
+    assert not offenders, (
+        "non-ASCII bytes in weekly.ps1 line(s) "
+        f"{[n for n, _ in offenders]}: under cp1252 these can decode to quote "
+        "characters and break the parse. Use plain ASCII.")
+
+    # Balanced quotes and braces -- a cheap structural proxy for "it parses".
+    text = raw.decode("ascii")
+    code = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("#"))
+    assert code.count('"') % 2 == 0, "unbalanced double quotes in weekly.ps1"
+    assert code.count("{") == code.count("}"), "unbalanced braces in weekly.ps1"

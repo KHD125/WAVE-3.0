@@ -72,13 +72,28 @@ unreadable until git restored it.
    live-record branch only fires at 30+ graded rows, so a miss there hides until
    the app first has real evidence to show.
 
-## 5. `tools/weekly.ps1` is UNVERIFIED (2026-08-23) · OPEN
+## 5. `tools/weekly.ps1` — VERIFIED, after it turned out not to parse (2026-08-23) · CLOSED
 
-The Task Scheduler fallback for issue 1. The logic is written but has never been
-run end to end — the PowerShell tool returned no output on three attempts in the
-authoring session. **Run it manually once** and confirm it freezes a row and
-pushes, before registering it as a scheduled task. An unverified weekly job is
-worse than none: it looks like coverage and leaves permanent holes.
+The Task Scheduler fallback for issue 1. When finally run, **it did not parse at
+all** — as a scheduled task it would have done nothing every Sunday, silently,
+which is worse than no fallback because it looks like coverage.
+
+**Cause:** Windows PowerShell 5.1 reads a `.ps1` as ANSI unless the file carries a
+UTF-8 BOM. The script contained em-dashes; under cp1252 the `0x94` byte decodes to
+a right double quote, which PowerShell honours as a string delimiter. Strings
+closed early, braces went unbalanced, the parse failed at a line far from the
+cause. **Rule: keep `.ps1` files ASCII-only** — pinned by
+`tests/test_ui_contract.py::test_powershell_fallback_is_ascii_and_parses`.
+
+Also dropped `$ErrorActionPreference = "Stop"`: under 5.1 it converts a native
+program's stderr into a terminating `NativeCommandError`, so a Python traceback
+would abort the script before it could read `$LASTEXITCODE` and report the real
+reason. Every failure is now checked explicitly.
+
+**Verified end to end 2026-08-23:** downloaded 50 CSVs from Drive, hit the
+freshness guard on the 21-day-old snapshot, reported it, exited 1, and committed
+nothing. The one path still unexercised is the success branch (commit + push),
+which needs a fresh snapshot to reach.
 
 ## 6. The first logged row is 7 days stale, and predates the guard (2026-08-23) · DISCLOSED
 
