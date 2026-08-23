@@ -11,6 +11,17 @@ this system was built to prevent.
 MODEL_VERSION = "3.1"
 FIRST_REVIEW = "2027-02-21"          # 26 logged weeks after the first frozen forecast
 
+# ── Data source ───────────────────────────────────────────────────────────────
+# The public Drive folder holding Stocks_Weekly_*.csv. NOT a secret: the folder is
+# already shared "Anyone with the link -> Viewer", so the URL protects nothing and
+# hiding it in a repo variable only creates a step someone must remember. Verified
+# 2026-08-23: resolves to 50 dated files, 2025-08-30 -> 2026-08-02.
+# Override at runtime with the WAVE_DRIVE_FOLDER env var if the folder ever moves.
+DRIVE_FOLDER_WEEKLY = "https://drive.google.com/drive/folders/1r9Y2E3_fOCLiBTBFFwu9KwG_AVopzsLq"
+# Daily archive — execution testing only, NEVER training (ledger #56: half the market
+# span, 96% label overlap).
+DRIVE_FOLDER_DAILY = "https://drive.google.com/drive/folders/1B_TQWQW3Y-Y4jlVB3svdmMqsoPB_xd5S"
+
 # ── Units ─────────────────────────────────────────────────────────────────────
 CRORE = 1e7                          # ₹1 crore in rupees
 

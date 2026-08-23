@@ -21,12 +21,19 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.decide import append_log, build_forecast_from_files          # noqa: E402
+from core.config import DRIVE_FOLDER_WEEKLY                            # noqa: E402
 from core.sources import load_csvs_from_drive, local_archive_files     # noqa: E402
 
 
 def collect_files():
-    """Drive folder if configured, else the on-disk archive (local runs)."""
-    key = os.environ.get("WAVE_DRIVE_FOLDER", "").strip()
+    """Drive folder, else the on-disk archive (local runs).
+
+    Order: env var (an override, if the folder moves) -> config -> local archive.
+    Config carries a working default so CI needs no manual setup step — a step
+    someone must remember is a step that eventually gets forgotten, and a weekly
+    job that silently stops is the one failure this whole design exists to avoid.
+    """
+    key = (os.environ.get("WAVE_DRIVE_FOLDER", "").strip() or DRIVE_FOLDER_WEEKLY)
     if key:
         files, err = load_csvs_from_drive(key)
         if err:

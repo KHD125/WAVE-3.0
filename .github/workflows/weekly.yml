@@ -1,12 +1,11 @@
-# WAVE 3.0 — the Sunday freeze.
+# WAVE 3.1 — the Sunday freeze.
 #
 # Runs itself so the experiment does not depend on anyone remembering. Fetches
 # the newest snapshots, scores them, and commits the forecast to logs/waves_log.csv
 # BEFORE the outcome exists. GitHub timestamps it; the log is append-only.
 #
-# Setup (once): repo Settings -> Secrets and variables -> Actions -> Variables
-#   WAVE_DRIVE_FOLDER = <public Drive folder link or key>
-# Without it the job fails loudly rather than silently logging nothing.
+# No setup required: the public Drive folder is in core/config.py. Set the
+# WAVE_DRIVE_FOLDER repo variable only if that folder ever moves — it overrides.
 
 name: weekly forecast
 
