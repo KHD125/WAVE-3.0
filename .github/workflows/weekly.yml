@@ -34,7 +34,11 @@ jobs:
 
       - name: Run the forecast and freeze it
         env:
-          WAVE_DRIVE_FOLDER: ${{ vars.WAVE_DRIVE_FOLDER }}
+          # Accepts either repository variable name. WAVE_DRIVE_FOLDER is preferred
+          # because it says what it is; WEEKLY is supported so an existing setup
+          # keeps working. An unset variable makes tools.weekly_run fail loudly
+          # rather than quietly logging nothing.
+          WAVE_DRIVE_FOLDER: ${{ vars.WAVE_DRIVE_FOLDER || vars.WEEKLY }}
         run: python -m tools.weekly_run
 
       - name: Commit the frozen forecast
