@@ -155,8 +155,16 @@ version in the Cloud app's Advanced settings; it cannot be pinned from the repo.
 
 ## 8. A daily file dated D holds the PREVIOUS trading day's close (2026-08-23) · DATA FACT
 
-The filename is the write date, not the data date. The daily backup runs just after
-midnight IST, so it captures the session that already closed.
+The filename is the write date, not the data date. Confirmed from the Apps Script
+sources, which are the ground truth:
+
+- `Script 1 (Puller)` refreshes prices at **17:45 UTC = 23:15 IST**
+  (`essential1a: Core price data -> static`), after the 15:30 IST market close.
+- `Script 2 (Backup)` runs `SCHEDULE.DAILY` at **20:00 IST**, and `WEEKLY` at
+  **21:00 IST Sunday**.
+
+The backup therefore fires **3h15m BEFORE** that night's refresh, so it always saves
+what was pulled the previous night. File dated D holds day D-1's close.
 
 Measured against the Sunday weekly snapshots (which hold Friday's close, markets
 being shut Sat/Sun), % of prices identical within 0.5%:
@@ -169,7 +177,17 @@ being shut Sat/Sun), % of prices identical within 0.5%:
 | **next Monday** | **100%** |
 | next Tuesday | 23% |
 
-So `Stocks_Daily_2026-03-09` (a Monday) contains the close of Friday 2026-03-06.
+So `Stocks_Daily_2026-03-09` (a Monday) contains the close of Friday 2026-03-06:
+its sheet was last refreshed Sunday 23:15 IST, and a Sunday refresh returns Friday's
+close because the market was shut. The Sunday weekly file matches for the same reason
+(last refreshed Saturday 23:15 IST -> also Friday's close), which is exactly why the
+two are 100% identical.
+
+**Do NOT "fix" the schedule.** Making a file dated D hold day D's close would need the
+backup to run inside the 45-minute window between 23:15 IST and midnight - fragile, and
+it would make every new snapshot incomparable with the 52 already collected. For a
+frozen 26-week experiment, changing the measurement mid-flight is worse than an offset
+that is consistent and now documented.
 
 **Consequence:** anything that joins daily files on their filename date is off by one
 trading day, and a forward return built that way is shifted a full session — the
