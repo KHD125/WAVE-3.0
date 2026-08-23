@@ -120,10 +120,29 @@ def append_log(table: pd.DataFrame, path: Optional[str] = None) -> bool:
     path = path or LOG
     os.makedirs(os.path.dirname(path), exist_ok=True)
     snapshot = pd.to_datetime(table["snapshot_date"].iloc[0])
+    version = str(table["model_version"].iloc[0])
     if os.path.exists(path):
-        existing = pd.read_csv(path, usecols=["snapshot_date"])
-        already = pd.to_datetime(existing["snapshot_date"], errors="coerce")
-        if (already == snapshot).any():
+        # SCHEMA GUARD. A CSV append writes no header, so appending 16-column rows
+        # under a 13-column header silently corrupts the file — every later read
+        # dies with a tokenizing error, and the experiment record is gone unless
+        # git has it. A version bump that changes LOG_COLUMNS must ARCHIVE the old
+        # log and start a new one, never append across schemas.
+        header = pd.read_csv(path, nrows=0).columns.tolist()
+        if header != LOG_COLUMNS:
+            raise ValueError(
+                f"log schema mismatch: {path} has {len(header)} columns, the code "
+                f"writes {len(LOG_COLUMNS)}. Appending would corrupt it. Archive the "
+                f"old log (e.g. logs/waves_log_v<old>.csv) and let a fresh one start.\n"
+                f"  on disk: {header}\n  in code: {LOG_COLUMNS}")
+        # Key on (snapshot_date, model_version), NOT snapshot_date alone. A new
+        # model version forecasting the same week is a genuinely DIFFERENT forecast
+        # and February grades the versions separately — keying on the date alone
+        # let a v3.0 row block v3.1 entirely, silently costing the new version its
+        # first week of evidence.
+        existing = pd.read_csv(path, usecols=["snapshot_date", "model_version"])
+        same = (pd.to_datetime(existing["snapshot_date"], errors="coerce") == snapshot) & \
+               (existing["model_version"].astype(str) == version)
+        if same.any():
             return False
     table.reindex(columns=LOG_COLUMNS).to_csv(
         path, mode="a", header=not os.path.exists(path), index=False)

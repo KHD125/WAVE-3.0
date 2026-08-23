@@ -190,3 +190,87 @@ def test_ci_entry_point_only_prints_columns_the_engine_produces():
     assert not leaked, (
         f"weekly_run.py references retired v3.0 columns {sorted(leaked)}. "
         "The CI job would KeyError on the next real run.")
+
+
+def test_dedupe_keys_on_snapshot_AND_version(tmp_path, monkeypatch):
+    """A new model version forecasting the same week is a DIFFERENT forecast.
+
+    Keying dedupe on snapshot_date alone let the v3.0 row block v3.1 entirely,
+    silently costing the new version its first week of evidence — and February
+    grades the versions separately, so both belong in the log.
+    """
+    import core.decide as decide
+    log = tmp_path / "waves_log.csv"
+    monkeypatch.setattr(decide, "LOG", str(log))
+    base = {c: 1 for c in LOG_COLUMNS}
+    base["snapshot_date"] = pd.Timestamp("2026-08-16")
+
+    v30 = pd.DataFrame([{**base, "model_version": "3.0", "ticker": "AAA"}])
+    v31 = pd.DataFrame([{**base, "model_version": "3.1", "ticker": "BBB"}])
+
+    assert append_log(v30) is True
+    assert append_log(v31) is True, "a different model_version must be allowed to log"
+    assert append_log(v31.assign(ticker="CCC")) is False, "same version+snapshot is a re-run"
+    back = pd.read_csv(log)
+    assert len(back) == 2
+    assert set(back["model_version"].astype(str)) == {"3.0", "3.1"}
+
+
+def test_append_refuses_a_log_written_under_a_different_schema(tmp_path, monkeypatch):
+    """The bug this pins: appending v3.1's 16 columns to v3.0's 13-column log.
+
+    A CSV append writes no header row, so the wider rows land under the narrower
+    header and every later `read_csv` dies with
+    `Expected 13 fields in line 32, saw 16`. This actually happened to the real
+    frozen log and only git got it back. A version bump that changes LOG_COLUMNS
+    must ARCHIVE the old file and start a new one — never append across schemas.
+    """
+    import core.decide as decide
+    log = tmp_path / "waves_log.csv"
+    monkeypatch.setattr(decide, "LOG", str(log))
+
+    old = pd.DataFrame([{c: 1 for c in LOG_COLUMNS[:-3]}])       # a narrower vintage
+    old.to_csv(log, index=False)
+
+    row = pd.DataFrame([{**{c: 1 for c in LOG_COLUMNS},
+                         "snapshot_date": pd.Timestamp("2026-08-16"),
+                         "model_version": "3.1", "ticker": "AAA"}])
+    with pytest.raises(ValueError, match="schema mismatch"):
+        append_log(row)
+
+    # And the old file is left exactly as it was — refusing must not damage it.
+    assert list(pd.read_csv(log).columns) == LOG_COLUMNS[:-3]
+
+
+def test_live_record_grades_the_v31_log_which_has_no_p_up(tmp_path):
+    """`summary` read a hardcoded `p_up` — a column v3.1 stopped writing.
+
+    It would not have failed on the empty log or the small one: the live-record
+    branch only runs at 30+ graded rows, so the KeyError was scheduled for the
+    exact moment the app first had real evidence to show. Grade a v3.1-schema log
+    end to end and assert it returns numbers.
+    """
+    from core.track_record import summary
+
+    dates = pd.to_datetime(["2026-01-04"] * 40)
+    tickers = [f"T{i:02d}" for i in range(40)]
+    log = pd.DataFrame({c: 1 for c in LOG_COLUMNS}, index=range(40))
+    log["snapshot_date"] = dates
+    log["ticker"] = tickers
+    log["model_version"] = "3.1"
+    log["hist_rate"] = 0.12
+    assert "p_up" not in log.columns, "fixture must reproduce the v3.1 schema"
+    path = tmp_path / "waves_log.csv"
+    log.to_csv(path, index=False)
+
+    # Half the forecasts wave, so the realized rate is knowable, not incidental.
+    panel = pd.DataFrame({
+        "ticker": tickers, "date": dates,
+        f"fwd_ret_{LABEL_HORIZON_WEEKS}w": [WAVE_PCT + 1] * 20 + [0.0] * 20,
+    })
+
+    rec = summary(panel, oos=None, path=str(path))
+    assert rec is not None and rec["source"] == "live log"
+    assert rec["n"] == 40
+    assert rec["stated"] == pytest.approx(0.12)
+    assert rec["actual"] == pytest.approx(0.5)

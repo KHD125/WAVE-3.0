@@ -69,6 +69,19 @@ def grade_log(panel: pd.DataFrame, log: Optional[pd.DataFrame] = None,
     return graded
 
 
+# What the log STATED as its probability. v3.0 wrote a fitted `p_up`; v3.1 writes
+# `hist_rate`, the counted historical wave rate of the row's decile. Grading asks
+# the same question of both — did the stated number match what happened — so the
+# column is looked up, never assumed. Assuming it is how `summary` came to read a
+# `p_up` that v3.1 stopped writing: it would have raised KeyError on the 30th
+# graded row, i.e. the exact moment the app first had real evidence to show.
+_STATED_CANDIDATES = ("hist_rate", "p_up")
+
+
+def _stated_col(df: pd.DataFrame) -> Optional[str]:
+    return next((c for c in _STATED_CANDIDATES if c in df.columns), None)
+
+
 def _stats(df: pd.DataFrame, prob_col: str, hit_col: str, base: float,
            source: str) -> dict:
     stated = float(df[prob_col].mean())
@@ -106,9 +119,10 @@ def summary(panel: pd.DataFrame, oos: Optional[pd.DataFrame] = None,
     ALWAYS carries `source`, so the UI can label which one the reader is seeing.
     """
     graded = grade_log(panel, path=path)
-    if not graded.empty and len(graded) >= 30:
+    stated = _stated_col(graded) if not graded.empty else None
+    if stated and len(graded) >= 30:
         base = float((panel[f"fwd_ret_{LABEL_HORIZON_WEEKS}w"] >= WAVE_PCT).mean())
-        return _stats(graded, "p_up", "hit", base, source="live log")
+        return _stats(graded, stated, "hit", base, source="live log")
     if oos is not None and not oos.empty:
         rec = backtest_record(oos)
         if rec:
