@@ -54,3 +54,28 @@ Cheap, and they improve every future snapshot:
   2026-04-26 snapshot (96.13% identical prices).
 - **Regenerate `Stocks_Daily_2026-04-22`** — its first column header is `#REF!`, a
   live sheet error frozen into the backup.
+
+## 4. Bumping MODEL_VERSION: archive the log, never append across schemas (2026-08-23) · RULE
+
+A CSV append writes no header row. When v3.1 widened `LOG_COLUMNS` from 13 to 16,
+the new rows landed under the old header and every later read died with
+`Expected 13 fields in line 32, saw 16` — the frozen experiment record was
+unreadable until git restored it.
+
+`append_log` now refuses on a header mismatch. **When a version bump changes
+`LOG_COLUMNS`:**
+1. `git mv logs/waves_log.csv logs/waves_log_v<old>.csv` — the old rows stay
+   gradeable and February grades the versions separately.
+2. Let the next run start a fresh `waves_log.csv`.
+3. Check `core/track_record.py::_STATED_CANDIDATES` covers the new schema's
+   stated-probability column — v3.1 renamed it `p_up` → `hist_rate`, and the
+   live-record branch only fires at 30+ graded rows, so a miss there hides until
+   the app first has real evidence to show.
+
+## 5. `tools/weekly.ps1` is UNVERIFIED (2026-08-23) · OPEN
+
+The Task Scheduler fallback for issue 1. The logic is written but has never been
+run end to end — the PowerShell tool returned no output on three attempts in the
+authoring session. **Run it manually once** and confirm it freezes a row and
+pushes, before registering it as a scheduled task. An unverified weekly job is
+worse than none: it looks like coverage and leaves permanent holes.
